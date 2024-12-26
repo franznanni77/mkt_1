@@ -2,40 +2,43 @@ import streamlit as st
 import pandas as pd
 import pulp as pu
 from collections import defaultdict
+import io
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
 
 def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share):
     """
     Risolve il problema con PuLP, forzando x_i (lead per campagna i) a essere interi.
 
     Parametri:
-    - campaigns: lista di dizionari {name, category, cost, revenue, net_profit}
+    - campaigns: lista di dict {name, category, cost, revenue, net_profit}
     - total_leads: numero totale di lead da generare (intero)
-    - corpo_percent: percentuale minima di lead 'corpo' rispetto a total_leads (0..1)
-    - min_share: percentuale minima di lead da assegnare alla campagna meno profittevole
-                 all'interno di ogni categoria con >=2 campagne. (0..1)
+    - corpo_percent: percentuale minima di lead 'corpo' (0..1)
+    - min_share: percentuale minima da assegnare alla campagna meno profittevole in ogni categoria (0..1)
 
     Variabili: x_i >= 0, cat='Integer'
     Vincoli:
       1) somma(x_i) = total_leads
       2) somma(x_i in 'corpo') >= corpo_percent * total_leads
-      3) in ogni categoria con >=2 campagne, 
-         la campagna con net_profit min ottiene x_min >= min_share * (somma x nella cat)
+      3) in ogni categoria con >=2 campagne, la campagna con net_profit min
+         ha x_min >= min_share * (somma x nella cat)
     Obiettivo: max sum(net_profit_i * x_i)
     """
 
     prob = pu.LpProblem("MarketingCampaignOptimizationInteger", pu.LpMaximize)
     n = len(campaigns)
 
-    # 1. Variabili di decisione: x_i interi
+    # 1) Variabili di decisione (intere)
     x = [pu.LpVariable(f"x_{i}", lowBound=0, cat="Integer") for i in range(n)]
 
-    # 2. Funzione obiettivo
+    # 2) Funzione obiettivo
     profit_expr = []
     for i, camp in enumerate(campaigns):
         profit_expr.append(camp["net_profit"] * x[i])
     prob += pu.lpSum(profit_expr), "Total_Profit"
 
-    # 3. Vincoli
+    # 3) Vincoli
     # (a) Somma dei lead = total_leads
     prob += pu.lpSum(x) == total_leads, "Totale_lead"
 
@@ -44,20 +47,18 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share):
     if corpo_indices:
         prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
 
-    # (c) Vincolo su campagna meno profittevole in ogni categoria
+    # (c) Vincolo su campagna meno profittevole
     cat_dict = defaultdict(list)
     for i, camp in enumerate(campaigns):
         cat_dict[camp["category"]].append(i)
 
     for category, indices in cat_dict.items():
         if len(indices) > 1:
-            # Trova l'indice della campagna con net_profit minimo
             min_i = min(indices, key=lambda idx: campaigns[idx]["net_profit"])
             sum_in_cat = pu.lpSum([x[idx] for idx in indices])
-            # x[min_i] >= min_share * sum_in_cat
             prob += x[min_i] >= min_share * sum_in_cat, f"MinProfit_{category}"
 
-    # 4. Risoluzione con CBC
+    # 4) Risolvi con CBC
     prob.solve(pu.PULP_CBC_CMD(msg=0))
     status = pu.LpStatus[prob.status]
 
@@ -69,15 +70,12 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share):
         return status, None, None
 
 def main():
-    st.title("Ottimizzatore di Campagne")
+    st.title("Ottimizzatore di Campagne (con Esportazione Excel/PDF)")
     st.write("""
-    Questa è un'applicazione che aiuta a distribuire i lead (potenziali clienti) tra diverse campagne pubblicitarie in modo ottimale. Vediamo in parole semplici cosa fa:
-
-Lo scopo è distribuire i lead tra le varie campagne pubblicitarie massimizzando il profitto (ricavo - costo)
-Ci sono alcuni vincoli da rispettare:
-- C'è un numero totale di lead da distribuire
-- Una certa percentuale dei lead deve andare alle campagne di tipo "corpo"
-- Per essere equi, quando ci sono 2 o più campagne della stessa categoria, anche quella meno redditizia deve ricevere una quota minima di lead
+    - I lead sono **interi** (cat="Integer").
+    - Puoi impostare la percentuale minima 'corpo'.
+    - Puoi impostare la percentuale minima di lead da assegnare alla campagna meno profittevole.
+    - **Esportazione** risultati in Excel o PDF.
     """)
 
     st.subheader("1) Caricamento dei Dati")
@@ -86,7 +84,6 @@ Ci sono alcuni vincoli da rispettare:
     campaigns = []
 
     if mode == "Carica CSV":
-        st.write("Carica un file CSV con colonne: **nome campagna, categoria campagna, costo per lead, ricavo per lead**.")
         uploaded_file = st.file_uploader("Seleziona il tuo CSV", type=["csv"])
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
@@ -110,7 +107,6 @@ Ci sono alcuni vincoli da rispettare:
             else:
                 st.error(f"Le colonne attese sono: {required_cols}. Controlla il tuo CSV.")
     else:
-        # Inserimento manuale
         n = st.number_input("Numero di campagne (2..10):", min_value=2, max_value=10, value=2, step=1)
         for i in range(n):
             st.markdown(f"**Campagna #{i+1}**")
@@ -139,12 +135,11 @@ Ci sono alcuni vincoli da rispettare:
             min_value=0.0, max_value=1.0, value=0.33, step=0.01
         )
         min_share = st.slider(
-            "Percentuale minima di lead da assegnare alla campagna meno profittevole in ogni categoria",
+            "Percentuale minima di lead per la campagna meno profittevole (nella stessa categoria):",
             min_value=0.0, max_value=1.0, value=0.2, step=0.01
         )
 
         if st.button("Esegui Ottimizzazione"):
-            # Risolvi con PuLP (integer) e il vincolo personalizzato min_share
             status, x_values, total_profit = solve_with_pulp_integer(
                 campaigns,
                 int(total_leads),
@@ -164,7 +159,7 @@ Ci sono alcuni vincoli da rispettare:
 
             for i, camp in enumerate(campaigns):
                 leads_float = x_values[i] or 0.0
-                leads = int(round(leads_float))  # dovrebbero già essere interi
+                leads = int(round(leads_float))  # cat="Integer", ma cast di sicurezza
 
                 cost_t = camp["cost"] * leads
                 revenue_t = camp["revenue"] * leads
@@ -186,19 +181,81 @@ Ci sono alcuni vincoli da rispettare:
             st.write("**Assegnazione Campagne**")
             st.table(results)
 
-            # Calcoliamo quanti lead corpo totali sono stati assegnati
-            corpo_leads_used = sum(
-                r["Leads"] for r in results if r["Categoria"] == "corpo"
-            )
+            corpo_leads_used = sum(r["Leads"] for r in results if r["Categoria"] == "corpo")
 
             st.write("**Riepilogo**")
             st.write(f"Totale lead: {int(total_leads)}")
             st.write(f"Lead 'corpo': {corpo_leads_used} (≥ {int(round(corpo_percent*100))}% del totale)")
             st.write(f"Lead 'laser': {int(total_leads - corpo_leads_used)}")
-
             st.write(f"Costo totale: {int(round(cost_total_sum))}")
             st.write(f"Ricavo totale: {int(round(revenue_total_sum))}")
             st.write(f"Profitto totale: {int(round(profit_total_sum))}")
+
+            # -----------------------------------------------------------------
+            # 3) Esportazione: Excel e PDF
+            # -----------------------------------------------------------------
+
+            # a) Esporta in XLSX
+            df_result = pd.DataFrame(results)
+
+            # Creiamo un buffer in memoria
+            xlsx_buffer = io.BytesIO()
+            with pd.ExcelWriter(xlsx_buffer, engine="xlsxwriter") as writer:
+                df_result.to_excel(writer, index=False, sheet_name="Risultati")
+
+            st.download_button(
+                label="Esporta in Excel",
+                data=xlsx_buffer.getvalue(),
+                file_name="risultati.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            # b) Esporta in PDF
+            # Costruiamo una tabella ReportLab
+            pdf_buffer = io.BytesIO()
+
+            # Creiamo il documento PDF
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib import colors
+
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+
+            # Prepara i dati per la tabella PDF
+            # Header
+            table_data = [["Campagna", "Categoria", "Leads", "Costo Tot", "Ricavo Tot", "Margine"]]
+            # Righe
+            for row in results:
+                table_data.append([
+                    row["Campagna"],
+                    row["Categoria"],
+                    str(row["Leads"]),
+                    str(row["Costo Tot"]),
+                    str(row["Ricavo Tot"]),
+                    str(row["Margine"])
+                ])
+
+            table = Table(table_data)
+            table_style = TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.gray),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('ALIGN', (2,1), (-1,-1), 'RIGHT'),  # leads, cost, ricavo, margine a dx
+            ])
+            table.setStyle(table_style)
+
+            elements = [table]
+            doc.build(elements)
+            pdf_buffer.seek(0)
+
+            st.download_button(
+                label="Esporta in PDF",
+                data=pdf_buffer,
+                file_name="risultati.pdf",
+                mime="application/pdf"
+            )
+
         else:
             st.info("Imposta i parametri e clicca su 'Esegui Ottimizzazione'.")
     else:
