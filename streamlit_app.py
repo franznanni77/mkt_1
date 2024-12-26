@@ -11,7 +11,7 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share, bu
     - campaigns: lista di dict {name, category, cost, revenue, net_profit}
     - total_leads: numero totale di lead da generare (intero)
     - corpo_percent: percentuale minima di lead 'corpo' (0..1)
-    - min_share: percentuale minima di lead per la campagna meno profittevole in ogni categoria (0..1)
+    - min_share: percentuale minima di lead per OGNI campagna nella sua categoria (0..1)
     - budget_max: budget massimo disponibile (>= 0)
 
     Variabili: x_i >= 0, cat='Integer'
@@ -19,17 +19,19 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share, bu
     Vincoli:
       1) somma(x_i) = total_leads
       2) somma(x_i in 'corpo') >= corpo_percent * total_leads
-      3) in ogni categoria con >=2 campagne, 
-         la campagna con net_profit min ha x_min >= min_share * (somma x in cat)
+      3) per ogni categoria e per ogni campagna j in quella categoria:
+         x_j >= min_share * (somma x nella cat)
       4) somma(cost_i * x_i) <= budget_max
     Obiettivo: max sum(net_profit_i * x_i)
+    
+    Nota: se min_share * (numero di campagne in cat) > 1, il problema diventa infeasible.
     """
 
-    # Definiamo il problema come Massimizzazione
+    # Definiamo il problema (CBC solver) in massimizzazione
     prob = pu.LpProblem("MarketingCampaignOptimizationInteger", pu.LpMaximize)
     n = len(campaigns)
 
-    # 1) Variabili di decisione (x_i, intere)
+    # 1) Variabili di decisione (x_i intere)
     x = [pu.LpVariable(f"x_{i}", lowBound=0, cat="Integer") for i in range(n)]
 
     # 2) Funzione obiettivo (profitto totale)
@@ -39,6 +41,7 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share, bu
     prob += pu.lpSum(profit_expr), "Total_Profit"
 
     # 3) Vincoli
+
     # (a) Somma dei lead = total_leads
     prob += pu.lpSum(x) == total_leads, "Totale_lead"
 
@@ -47,16 +50,18 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share, bu
     if corpo_indices:
         prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
 
-    # (c) Campagna meno profittevole >= min_share
+    # (c) min_share per OGNI campagna nella categoria
     cat_dict = defaultdict(list)
     for i, camp in enumerate(campaigns):
         cat_dict[camp["category"]].append(i)
 
     for category, indices in cat_dict.items():
-        if len(indices) > 1:
-            min_i = min(indices, key=lambda idx: campaigns[idx]["net_profit"])
-            sum_in_cat = pu.lpSum([x[idx] for idx in indices])
-            prob += x[min_i] >= min_share * sum_in_cat, f"MinProfit_{category}"
+        # somma dei lead nella categoria
+        sum_in_cat = pu.lpSum([x[idx] for idx in indices])
+        # Se c'è 1 sola campagna in questa categoria, min_share vale comunque
+        # (ma se min_share>1, sarà infeasible).
+        for j in indices:
+            prob += x[j] >= min_share * sum_in_cat, f"MinShare_{category}_{j}"
 
     # (d) Vincolo di budget massimo: somma(cost_i * x_i) <= budget_max
     cost_expr = []
@@ -64,7 +69,7 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share, bu
         cost_expr.append(camp["cost"] * x[i])
     prob += pu.lpSum(cost_expr) <= budget_max, "BudgetMax"
 
-    # 4) Risoluzione (solver CBC, silenzioso)
+    # 4) Risolvi (CBC solver, silenzioso)
     prob.solve(pu.PULP_CBC_CMD(msg=0))
     status = pu.LpStatus[prob.status]
 
@@ -77,17 +82,18 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share, bu
         return status, None, None
 
 def main():
-    st.title("Ottimizzatore di Campagne con Vincolo di Budget Massimo")
+    st.title("Ottimizzatore di Campagne con min_share per OGNI Campagna in Categoria")
+
     st.write("""
     - I lead sono **interi** (cat="Integer").
-    - Puoi impostare la percentuale minima di lead 'corpo'.
-    - Puoi impostare la percentuale minima di lead per la campagna meno profittevole.
-    - E puoi impostare un **Budget massimo** (EUR) per non superare la spesa.
+    - Vincolo: Ogni campagna riceve almeno `min_share` dei lead della propria categoria.
+      (Attenzione a non superare 1/(num. campagne in cat).)
+    - Altre funzioni: percentuale minima 'corpo', budget massimo, etc.
     """)
 
     st.subheader("1) Caricamento dei Dati")
 
-    # Modifica con il link al file di esempio
+    # Link al file di esempio
     mode = st.radio(
         "Come vuoi inserire i dati delle tue campagne? Carica un CSV come [questo file di esempio](https://drive.google.com/file/d/1vfp_gd6ivHsVpxffn_seAB11qCy9m0bP/view?usp=sharing)",
         ["Carica CSV", "Inserimento manuale"]
@@ -99,7 +105,6 @@ def main():
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
             
-            # Anteprima del CSV
             st.write("**Anteprima del CSV caricato:**")
             st.dataframe(df.head())
 
@@ -152,7 +157,7 @@ def main():
             min_value=0.0, max_value=1.0, value=0.33, step=0.01
         )
         min_share = st.slider(
-            "Percentuale minima di lead per la campagna meno profittevole",
+            "Percentuale minima di lead per OGNI campagna nella propria categoria",
             min_value=0.0, max_value=1.0, value=0.2, step=0.01
         )
         budget_max = st.number_input(
@@ -205,7 +210,7 @@ def main():
             st.write("**Assegnazione Campagne**")
             st.table(results)
 
-            # Calcoliamo quanti lead corpo totali
+            # Calcoliamo quanti lead 'corpo' totali
             corpo_leads_used = sum(r["Leads"] for r in results if r["Categoria"] == "corpo")
 
             st.write("**Riepilogo**")
@@ -217,7 +222,10 @@ def main():
             st.write(f"Ricavo totale: {int(round(revenue_total_sum))}")
             st.write(f"Profitto totale: {int(round(profit_total_sum))}")
 
-            # Se desideri, puoi qui aggiungere l’esportazione in Excel/PDF.
+            st.info("""
+                **Attenzione**: se hai 2 o più campagne in una categoria e `min_share` * (numero di campagne in quella categoria) > 1,
+                il problema risulterà infeasible.
+            """)
         else:
             st.info("Imposta i parametri e clicca su 'Esegui Ottimizzazione'.")
     else:
