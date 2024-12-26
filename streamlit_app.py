@@ -80,11 +80,8 @@ def main():
 
     st.subheader("1) Caricamento dei Dati")
 
-    mode = st.radio(
-    "Come vuoi inserire i dati delle tue campagne? Carica un CSV come [questo file di esempio](https://drive.google.com/file/d/1vfp_gd6ivHsVpxffn_seAB11qCy9m0bP/view?usp=sharing)",
-    ["Carica CSV", "Inserimento manuale"]
-)
-campaigns = []
+    mode = st.radio("Come vuoi inserire i dati delle tue campagne?", ["Carica CSV", "Inserimento manuale"])
+    campaigns = []
 
     if mode == "Carica CSV":
         uploaded_file = st.file_uploader("Seleziona il tuo CSV", type=["csv"])
