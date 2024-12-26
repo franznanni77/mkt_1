@@ -1,221 +1,198 @@
+import streamlit as st
+import pandas as pd
 import math
 
-def solve_marketing_leads():
+def allocate_greedy(category_camps, leads_cat):
     """
-    Esempio di soluzione 'manuale' (greedy+ricerca esaustiva su 1 dimensione)
-    per distribuire i lead fra campagne laser e corpo.
-    NON usa librerie esterne di ottimizzazione (come pulp/ortools).
-    
-    Viene chiesto all'utente:
-      - Numero di campagne
-      - Per ogni campagna: nome, categoria, costo per lead, ricavo per lead
-      - Totale di lead
-      - Percentuale minima di 'corpo'
-    
-    Restituisce (stampa) la soluzione con profitto massimo.
-    
-    Limitazioni:
-      - Se in una categoria ci sono >=3 campagne, la distribuzione interna
-        non è necessariamente ottima.
-      - Il ciclo su tutti i possibili “lead_corpo” da min a max potrebbe
-        essere costoso per numeri molto grandi.
+    Distribuisce 'leads_cat' tra le campagne in 'category_camps' in modo semplificato:
+      - Se c'è 1 sola campagna, prende tutti i lead.
+      - Se >= 2, assegna il 20% alla campagna col profitto unitario min,
+        e l'80% a quella col profitto max. Le eventuali intermedie ricevono 0.
+    Ritorna una lista di tuple (camp_name, leads_assigned, cost, revenue, profit).
     """
-    
-    print("=== Ottimizzatore 'manuale' senza librerie esterne ===\n")
-    
-    # 1. Input
-    while True:
-        try:
-            n = int(input("Inserisci il numero di campagne (minimo 2, max 10): "))
-            if 2 <= n <= 10:
-                break
-            else:
-                print("Numero non valido.")
-        except ValueError:
-            print("Inserisci un intero valido.")
+    if leads_cat <= 0:
+        # Tutte a zero
+        return [(c["name"], 0, 0, 0, 0) for c in category_camps]
 
-    campaigns = []
-    for i in range(n):
-        print(f"\n--- Campagna #{i+1} ---")
-        name = input("Nome campagna: ").strip()
-        category = ""
-        while category not in ["laser", "corpo"]:
-            category = input("Categoria (laser/corpo): ").lower().strip()
-        
-        while True:
-            try:
-                cost = float(input("Costo per lead: "))
-                if cost >= 0:
-                    break
-                else:
-                    print("Il costo per lead deve essere >= 0.")
-            except ValueError:
-                print("Inserisci un valore numerico.")
-        
-        while True:
-            try:
-                revenue = float(input("Ricavo per lead: "))
-                if revenue >= 0:
-                    break
-                else:
-                    print("Il ricavo per lead deve essere >= 0.")
-            except ValueError:
-                print("Inserisci un valore numerico.")
-        
-        net_profit = revenue - cost
+    if len(category_camps) == 1:
+        c = category_camps[0]
+        assigned = leads_cat
+        cost_tot = assigned * c["cost"]
+        rev_tot = assigned * c["revenue"]
+        prof_tot = assigned * c["net_profit"]
+        return [(c["name"], assigned, cost_tot, rev_tot, prof_tot)]
+    
+    # Se >=2 campagne
+    c_min = min(category_camps, key=lambda x: x["net_profit"])
+    c_max = max(category_camps, key=lambda x: x["net_profit"])
 
-        campaigns.append({
-            "name": name if name else f"Camp_{i+1}",
-            "category": category,
-            "cost": cost,
-            "revenue": revenue,
-            "net_profit": net_profit
-        })
-    
-    while True:
-        try:
-            total_leads = int(input("\nTotale dei lead da produrre (intero): "))
-            if total_leads > 0:
-                break
-            else:
-                print("Deve essere > 0.")
-        except ValueError:
-            print("Inserisci un intero valido.")
-    
-    while True:
-        try:
-            corpo_percent = float(input("Percentuale minima di 'corpo' (0..1): "))
-            if 0 <= corpo_percent <= 1:
-                break
-            else:
-                print("La percentuale deve essere compresa tra 0 e 1.")
-        except ValueError:
-            print("Inserisci un valore numerico (es. 0.33).")
-    
-    # 2. Suddividiamo le campagne per categoria
+    min_leads = int(round(0.2 * leads_cat))
+    max_leads = leads_cat - min_leads
+
+    cost_min = min_leads * c_min["cost"]
+    rev_min = min_leads * c_min["revenue"]
+    prof_min = min_leads * c_min["net_profit"]
+
+    cost_max = max_leads * c_max["cost"]
+    rev_max = max_leads * c_max["revenue"]
+    prof_max = max_leads * c_max["net_profit"]
+
+    alloc_list = [
+        (c_min["name"], min_leads, cost_min, rev_min, prof_min),
+        (c_max["name"], max_leads, cost_max, rev_max, prof_max)
+    ]
+
+    # Per eventuali altre campagne in mezzo (non min, non max), assegniamo 0.
+    for c in category_camps:
+        if c["name"] not in [c_min["name"], c_max["name"]]:
+            alloc_list.append((c["name"], 0, 0, 0, 0))
+
+    return alloc_list
+
+def compute_best_distribution(campaigns, total_leads, corpo_percent):
+    """
+    Ricerca esaustiva su quanti lead assegnare a 'corpo' (da min_corpo_leads a total_leads).
+    Restituisce la soluzione con profitto massimo.
+    """
+    # Suddividiamo le campagne per categoria
     laser_camps = [c for c in campaigns if c["category"] == "laser"]
     corpo_camps = [c for c in campaigns if c["category"] == "corpo"]
-    
-    # Funzione di supporto: alloca i leads totali di una singola categoria
-    # tra le campagne di quella categoria, in modo "greedy semplificato":
-    # - Se c'è solo 1 campagna, tutti i lead a quella campagna.
-    # - Se ce ne sono >=2, assegniamo il 20% al min net_profit e il resto
-    #   al max net_profit. (Ignora le intermedie se fossero più di 2.)
-    def allocate_greedy(category_camps, leads_cat):
-        """
-        Restituisce una lista di (camp_name, leads_assigned, cost, revenue, profit).
-        Se ci sono 3+ campagne, assegna ugualmente 20% a quella col net_profit min
-        e 80% a quella col net_profit max, ignorando le altre.
-        """
-        if leads_cat <= 0:
-            return [(c["name"], 0, 0, 0, 0) for c in category_camps]
 
-        if len(category_camps) == 1:
-            c = category_camps[0]
-            assigned = leads_cat
-            cost_tot = assigned * c["cost"]
-            rev_tot = assigned * c["revenue"]
-            prof_tot = assigned * c["net_profit"]
-            return [(c["name"], assigned, cost_tot, rev_tot, prof_tot)]
-        
-        # Se >=2 campagne
-        # 1) Trova la min e la max per net_profit
-        c_min = min(category_camps, key=lambda x: x["net_profit"])
-        c_max = max(category_camps, key=lambda x: x["net_profit"])
-        
-        # (grezzo) Assegniamo 20% a c_min, 80% a c_max
-        min_leads = int(round(0.2 * leads_cat))
-        max_leads = leads_cat - min_leads
-        
-        # Info c_min
-        cost_min = min_leads * c_min["cost"]
-        rev_min = min_leads * c_min["revenue"]
-        prof_min = min_leads * c_min["net_profit"]
-        
-        # Info c_max
-        cost_max = max_leads * c_max["cost"]
-        rev_max = max_leads * c_max["revenue"]
-        prof_max = max_leads * c_max["net_profit"]
-        
-        # Se ci sono altre campagne oltre min e max, le ignoriamo in questa logica
-        # (potrebbe NON essere ottimale con 3+ campagne, ma è un esempio semplificato!)
-        
-        alloc_list = [
-            (c_min["name"], min_leads, cost_min, rev_min, prof_min),
-            (c_max["name"], max_leads, cost_max, rev_max, prof_max)
-        ]
-        
-        # Per le altre campagne (se presenti), assegniamo 0
-        for c in category_camps:
-            if c["name"] not in [c_min["name"], c_max["name"]]:
-                alloc_list.append((c["name"], 0, 0, 0, 0))
-        
-        return alloc_list
-    
-    # 3. Ricerchiamo la soluzione migliore iterando su quanti lead assegnare al "corpo"
-    min_corpo_leads = int(math.ceil(corpo_percent * total_leads))  # almeno questa soglia
+    min_corpo_leads = int(math.ceil(corpo_percent * total_leads))
+
     best_solution = None
     best_profit = -1e9
 
-    for corpo_leads_assigned in range(min_corpo_leads, total_leads+1):
+    for corpo_leads_assigned in range(min_corpo_leads, total_leads + 1):
         laser_leads_assigned = total_leads - corpo_leads_assigned
-        
-        # Alloco i leads per la categoria "corpo"
+
+        # Alloca in modo "greedy"
         corpo_alloc = allocate_greedy(corpo_camps, corpo_leads_assigned)
-        # Alloco i leads per la categoria "laser"
         laser_alloc = allocate_greedy(laser_camps, laser_leads_assigned)
-        
-        # Sommiamo i profitti totali
+
+        # Profitto totale
         total_profit = sum(item[4] for item in corpo_alloc) + sum(item[4] for item in laser_alloc)
-        
+
         if total_profit > best_profit:
             best_profit = total_profit
             best_solution = (corpo_alloc, laser_alloc, corpo_leads_assigned, laser_leads_assigned)
-    
-    # 4. Stampo la soluzione migliore trovata
-    print("\n=== RISULTATI ===\n")
-    if best_solution is None:
-        print("Nessuna soluzione trovata (imprevisto).")
-        return
-    
-    corpo_alloc, laser_alloc, corpo_leads_used, laser_leads_used = best_solution
-    
-    # Stampa assegnazione corpo
-    if corpo_camps:
-        print("--- CATEGORIA 'corpo' ---")
-        for (camp_name, leads, cost_t, rev_t, prof_t) in sorted(corpo_alloc, key=lambda x: x[0]):
-            print(f" Campagna: {camp_name}")
-            print(f"   Leads: {leads}")
-            print(f"   Costo Tot: {int(round(cost_t))}")
-            print(f"   RicavoTot: {int(round(rev_t))}")
-            print(f"   Margine:   {int(round(prof_t))}")
-            print("")
 
-    # Stampa assegnazione laser
-    if laser_camps:
-        print("--- CATEGORIA 'laser' ---")
-        for (camp_name, leads, cost_t, rev_t, prof_t) in sorted(laser_alloc, key=lambda x: x[0]):
-            print(f" Campagna: {camp_name}")
-            print(f"   Leads: {leads}")
-            print(f"   Costo Tot: {int(round(cost_t))}")
-            print(f"   RicavoTot: {int(round(rev_t))}")
-            print(f"   Margine:   {int(round(prof_t))}")
-            print("")
+    return best_solution, best_profit
 
-    # Riepilogo finale
-    tot_corpo_profit = sum(item[4] for item in corpo_alloc)
-    tot_laser_profit = sum(item[4] for item in laser_alloc)
-    tot_cost = sum(item[2] for item in corpo_alloc) + sum(item[2] for item in laser_alloc)
-    tot_revenue = sum(item[3] for item in corpo_alloc) + sum(item[3] for item in laser_alloc)
-    tot_margin = tot_corpo_profit + tot_laser_profit
+def main():
+    st.title("Ottimizzatore di Campagne (Senza Solver)")
+    st.write("""
+    Questa applicazione dimostra una strategia di ottimizzazione 'fatta in casa':
+    - Suddivide i lead tra 'corpo' e 'laser' in tutti i valori possibili compatibili con la percentuale minima di 'corpo'.
+    - All'interno di ogni categoria assegna il 20% alla campagna col profitto min, e l'80% a quella col profitto max (se >=2 campagne).
+    - **Limitazioni**: se in una categoria ci sono 3 o più campagne, la soluzione potrebbe non essere davvero ottimale.
+    """)
 
-    print(f"Totale lead: {total_leads}")
-    print(f"Lead CORPO: {corpo_leads_used} (>= {int(round(corpo_percent*100))}% del totale)")
-    print(f"Lead LASER: {laser_leads_used}")
-    print(f"\nCosto totale:   {int(round(tot_cost))}")
-    print(f"Ricavo totale:  {int(round(tot_revenue))}")
-    print(f"Profitto totale: {int(round(tot_margin))}")
+    st.subheader("1) Caricamento dei Dati")
 
+    # Scelta modalità: CSV o input manuale
+    mode = st.radio("Come vuoi inserire i dati delle campagne?", ["Carica CSV", "Inserimento manuale"])
+
+    campaigns = []
+
+    if mode == "Carica CSV":
+        st.write("Carica un file CSV con queste colonne: **nome campagna, categoria campagna, costo per lead, ricavo per lead**.")
+        uploaded_file = st.file_uploader("Seleziona il tuo CSV", type=["csv"])
+        
+        if uploaded_file is not None:
+            # Leggiamo il CSV con pandas
+            df = pd.read_csv(uploaded_file)
+            # Ci aspettiamo le colonne: 
+            # "nome campagna", "categoria campagna", "Costo per lead", "ricavo per lead"
+            # Normalizziamo i nomi colonna (minuscoli)
+            df.columns = [c.lower().strip() for c in df.columns]
+            
+            required_cols = ["nome campagna", "categoria campagna", "costo per lead", "ricavo per lead"]
+            if all(col in df.columns for col in required_cols):
+                for idx, row in df.iterrows():
+                    name = str(row["nome campagna"]).strip()
+                    category = str(row["categoria campagna"]).lower().strip()
+                    cost = float(row["costo per lead"])
+                    revenue = float(row["ricavo per lead"])
+                    net_profit = revenue - cost
+
+                    campaigns.append({
+                        "name": name,
+                        "category": category,
+                        "cost": cost,
+                        "revenue": revenue,
+                        "net_profit": net_profit
+                    })
+            else:
+                st.error(f"Le colonne attese sono: {required_cols}. Controlla il tuo CSV.")
+    else:
+        # Inserimento manuale
+        n = st.number_input("Numero di campagne (2..10):", min_value=2, max_value=10, value=2, step=1)
+        for i in range(n):
+            st.markdown(f"**Campagna #{i+1}**")
+            name = st.text_input(f"Nome campagna #{i+1}", key=f"name_{i}")
+            category = st.selectbox(f"Categoria #{i+1}", ["laser", "corpo"], key=f"cat_{i}")
+            cost = st.number_input(f"Costo per lead #{i+1}", min_value=0.0, value=0.0, step=1.0, key=f"cost_{i}")
+            revenue = st.number_input(f"Ricavo per lead #{i+1}", min_value=0.0, value=0.0, step=1.0, key=f"rev_{i}")
+            
+            net_profit = revenue - cost
+            campaigns.append({
+                "name": name if name else f"Camp_{i+1}",
+                "category": category,
+                "cost": cost,
+                "revenue": revenue,
+                "net_profit": net_profit
+            })
+
+    st.write("---")
+
+    if campaigns:
+        st.subheader("2) Parametri Globali")
+
+        total_leads = st.number_input("Totale dei lead da produrre:", min_value=1, value=10000, step=1)
+        corpo_percent = st.slider("Percentuale minima di lead 'corpo' (0% = 0.0, 100% = 1.0):", 
+                                  min_value=0.0, max_value=1.0, value=0.33, step=0.01)
+
+        if st.button("Esegui Ottimizzazione"):
+            best_solution, best_profit = compute_best_distribution(campaigns, int(total_leads), corpo_percent)
+            if best_solution is None:
+                st.error("Nessuna soluzione trovata. (Imprevisto!)")
+                return
+
+            corpo_alloc, laser_alloc, corpo_leads_used, laser_leads_used = best_solution
+
+            # Creiamo una tabella da mostrare
+            results = []
+            # corpo_alloc e laser_alloc contengono tuple: (camp_name, leads, cost, rev, profit)
+            all_alloc = corpo_alloc + laser_alloc
+            for (name, leads, cost_t, rev_t, prof_t) in all_alloc:
+                results.append({
+                    "Campagna": name,
+                    "Leads": int(round(leads)),
+                    "Costo Tot": int(round(cost_t)),
+                    "Ricavo Tot": int(round(rev_t)),
+                    "Margine": int(round(prof_t))
+                })
+            
+            st.write("**Assegnazione Campagne**")
+            st.table(results)
+
+            tot_cost = sum(r["Costo Tot"] for r in results)
+            tot_revenue = sum(r["Ricavo Tot"] for r in results)
+            tot_profit = sum(r["Margine"] for r in results)
+
+            st.write("**Riepilogo**")
+            st.write(f"Totale lead: {int(total_leads)}")
+            st.write(f"Lead 'corpo': {corpo_leads_used} (≥ {int(round(corpo_percent*100))}% del totale)")
+            st.write(f"Lead 'laser': {laser_leads_used}")
+            st.write(f"Costo totale: {tot_cost}")
+            st.write(f"Ricavo totale: {tot_revenue}")
+            st.write(f"Profitto totale: {tot_profit}")
+        else:
+            st.info("Imposta i parametri e poi clicca su 'Esegui Ottimizzazione'.")
+
+    else:
+        st.info("Carica un CSV valido oppure inserisci le campagne manualmente.")
 
 if __name__ == "__main__":
-    solve_marketing_leads()
+    main()
