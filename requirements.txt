@@ -1,3 +1,5 @@
 streamlit
 pulp
-
+pandas==2.2.0
+#scikit-learn
+#pulp
