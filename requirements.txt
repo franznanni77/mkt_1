@@ -2,5 +2,6 @@ streamlit
 pulp
 pandas
 reportlab
+xlsxwriter
 #scikit-learn
 #pulp
