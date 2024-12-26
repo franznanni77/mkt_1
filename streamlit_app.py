@@ -1,113 +1,94 @@
 import streamlit as st
 import pandas as pd
 import math
-import pulp as pu
-##import scikit-learn as scikit
+import pulp as pu  # PuLP
+from collections import defaultdict
 
-
-def allocate_greedy(category_camps, leads_cat):
+def solve_with_pulp(campaigns, total_leads, corpo_percent):
     """
-    Distribuisce 'leads_cat' tra le campagne in 'category_camps' in modo semplificato:
-      - Se c'è 1 sola campagna, prende tutti i lead.
-      - Se >= 2, assegna il 20% alla campagna col profitto unitario min,
-        e l'80% a quella col profitto max. Le eventuali intermedie ricevono 0.
-    Ritorna una lista di tuple (camp_name, leads_assigned, cost, revenue, profit).
+    Risolve il problema con PuLP:
+      - x_i = numero di lead per la campagna i (Continuous o Integer).
+      - Vincoli:
+        1) somma(x_i) = total_leads
+        2) somma(x_i) su 'corpo' >= corpo_percent * total_leads
+        3) per ogni categoria con >=2 campagne, la campagna meno profittevole
+           ottiene >= 20% dei lead di quella categoria
+      - Obiettivo: max somma( net_profit_i * x_i )
+    Restituisce (status, x_i_dict, profit_total).
     """
-    if leads_cat <= 0:
-        # Tutte a zero
-        return [(c["name"], 0, 0, 0, 0) for c in category_camps]
 
-    if len(category_camps) == 1:
-        c = category_camps[0]
-        assigned = leads_cat
-        cost_tot = assigned * c["cost"]
-        rev_tot = assigned * c["revenue"]
-        prof_tot = assigned * c["net_profit"]
-        return [(c["name"], assigned, cost_tot, rev_tot, prof_tot)]
-    
-    # Se >=2 campagne
-    c_min = min(category_camps, key=lambda x: x["net_profit"])
-    c_max = max(category_camps, key=lambda x: x["net_profit"])
+    # 1. Creazione modello
+    prob = pu.LpProblem("MarketingCampaignOptimization", pu.LpMaximize)
 
-    min_leads = int(round(0.2 * leads_cat))
-    max_leads = leads_cat - min_leads
+    n = len(campaigns)
 
-    cost_min = min_leads * c_min["cost"]
-    rev_min = min_leads * c_min["revenue"]
-    prof_min = min_leads * c_min["net_profit"]
+    # 2. Definizione variabili di decisione
+    # Se vuoi forzare lead interi, usa cat="Integer"
+    x = [pu.LpVariable(f"x_{i}", lowBound=0, cat="Continuous") for i in range(n)]
 
-    cost_max = max_leads * c_max["cost"]
-    rev_max = max_leads * c_max["revenue"]
-    prof_max = max_leads * c_max["net_profit"]
+    # 3. Funzione obiettivo
+    profit_expr = []
+    for i, camp in enumerate(campaigns):
+        profit_expr.append(camp["net_profit"] * x[i])
+    prob += pu.lpSum(profit_expr), "Total_Profit"
 
-    alloc_list = [
-        (c_min["name"], min_leads, cost_min, rev_min, prof_min),
-        (c_max["name"], max_leads, cost_max, rev_max, prof_max)
-    ]
+    # 4. Vincoli
 
-    # Per eventuali altre campagne in mezzo (non min, non max), assegniamo 0.
-    for c in category_camps:
-        if c["name"] not in [c_min["name"], c_max["name"]]:
-            alloc_list.append((c["name"], 0, 0, 0, 0))
+    # (a) Somma dei lead = total_leads
+    prob += pu.lpSum(x) == total_leads, "Totale_lead"
 
-    return alloc_list
+    # (b) Somma dei lead 'corpo' >= corpo_percent * total_leads
+    corpo_indices = [i for i, camp in enumerate(campaigns) if camp["category"] == "corpo"]
+    if corpo_indices:
+        prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
 
-def compute_best_distribution(campaigns, total_leads, corpo_percent):
-    """
-    Ricerca esaustiva su quanti lead assegnare a 'corpo' (da min_corpo_leads a total_leads).
-    Restituisce la soluzione con profitto massimo.
-    """
-    # Suddividiamo le campagne per categoria
-    laser_camps = [c for c in campaigns if c["category"] == "laser"]
-    corpo_camps = [c for c in campaigns if c["category"] == "corpo"]
+    # (c) Vincolo 20% alla campagna meno profittevole (per ogni categoria con >=2 campagne)
+    cat_dict = defaultdict(list)
+    for i, camp in enumerate(campaigns):
+        cat_dict[camp["category"]].append(i)
 
-    min_corpo_leads = int(math.ceil(corpo_percent * total_leads))
+    for category, indices in cat_dict.items():
+        if len(indices) > 1:
+            # Trova l'indice della campagna con net_profit minimo
+            min_i = min(indices, key=lambda idx: campaigns[idx]["net_profit"])
+            sum_in_cat = pu.lpSum([x[idx] for idx in indices])
+            # x_min >= 0.2 * somma_x_in_cat
+            prob += x[min_i] >= 0.2 * sum_in_cat, f"MinProfit_20pct_{category}"
 
-    best_solution = None
-    best_profit = -1e9
+    # 5. Risoluzione
+    prob.solve(pu.PULP_CBC_CMD(msg=0))
+    status = pu.LpStatus[prob.status]
 
-    for corpo_leads_assigned in range(min_corpo_leads, total_leads + 1):
-        laser_leads_assigned = total_leads - corpo_leads_assigned
-
-        # Alloca in modo "greedy"
-        corpo_alloc = allocate_greedy(corpo_camps, corpo_leads_assigned)
-        laser_alloc = allocate_greedy(laser_camps, laser_leads_assigned)
-
-        # Profitto totale
-        total_profit = sum(item[4] for item in corpo_alloc) + sum(item[4] for item in laser_alloc)
-
-        if total_profit > best_profit:
-            best_profit = total_profit
-            best_solution = (corpo_alloc, laser_alloc, corpo_leads_assigned, laser_leads_assigned)
-
-    return best_solution, best_profit
+    # 6. Lettura risultati
+    if status == "Optimal":
+        x_values = [pu.value(var) for var in x]
+        total_profit = pu.value(prob.objective)
+        return status, x_values, total_profit
+    else:
+        return status, None, None
 
 def main():
-    st.title("Ottimizzatore di Campagne ")
+    st.title("Ottimizzatore di Campagne con PuLP")
     st.write("""
-    Questa applicazione dimostra una strategia di ottimizzazione 'fatta in casa':
-    - Suddivide i lead tra 'corpo' e 'laser' in tutti i valori possibili compatibili con la percentuale minima di 'corpo'.
-    - All'interno di ogni categoria assegna il 20% alla campagna col profitto min, e l'80% a quella col profitto max (se >=2 campagne).
-    - **Limitazioni**: se in una categoria ci sono 3 o più campagne, la soluzione potrebbe non essere davvero ottimale.
+    In questa versione, usiamo **PuLP** per creare e risolvere un modello di programmazione lineare:
+    - Ogni campagna ha una variabile x_i = lead assegnati.
+    - Somma(x_i) = Totale lead.
+    - Almeno corpo_percent * Totale lead ai 'corpo'.
+    - In ogni categoria con >=2 campagne, quella meno profittevole riceve >= 20% dei lead di quella categoria.
+    - Obiettivo: massimizzare la somma dei margini (ricavo-costo).
     """)
 
     st.subheader("1) Caricamento dei Dati")
 
-    # Scelta modalità: CSV o input manuale
     mode = st.radio("Come vuoi inserire i dati delle campagne?", ["Carica CSV", "Inserimento manuale"])
-
     campaigns = []
 
     if mode == "Carica CSV":
         st.write("Carica un file CSV con queste colonne: **nome campagna, categoria campagna, costo per lead, ricavo per lead**.")
         uploaded_file = st.file_uploader("Seleziona il tuo CSV", type=["csv"])
-        
         if uploaded_file is not None:
-            # Leggiamo il CSV con pandas
             df = pd.read_csv(uploaded_file)
-            # Ci aspettiamo le colonne: 
-            # "nome campagna", "categoria campagna", "Costo per lead", "ricavo per lead"
-            # Normalizziamo i nomi colonna (minuscoli)
+            # Normalizziamo le colonne
             df.columns = [c.lower().strip() for c in df.columns]
             
             required_cols = ["nome campagna", "categoria campagna", "costo per lead", "ricavo per lead"]
@@ -118,7 +99,6 @@ def main():
                     cost = float(row["costo per lead"])
                     revenue = float(row["ricavo per lead"])
                     net_profit = revenue - cost
-
                     campaigns.append({
                         "name": name,
                         "category": category,
@@ -155,47 +135,120 @@ def main():
         total_leads = st.number_input("Totale dei lead da produrre:", min_value=1, value=10000, step=1)
         corpo_percent = st.slider("Percentuale minima di lead 'corpo' (0% = 0.0, 100% = 1.0):", 
                                   min_value=0.0, max_value=1.0, value=0.33, step=0.01)
+        
+        # Se vuoi l'obbligo che x_i siano interi, aggiungi un toggle:
+        use_integer = st.checkbox("Forza numero di lead interi (Mixed Integer Programming)")
 
         if st.button("Esegui Ottimizzazione"):
-            best_solution, best_profit = compute_best_distribution(campaigns, int(total_leads), corpo_percent)
-            if best_solution is None:
-                st.error("Nessuna soluzione trovata. (Imprevisto!)")
+
+            # Se vogliamo integer, cambiamo la cat="Integer" direttamente nella funzione solve_with_pulp
+            # Qui un esempio veloce di come farlo: creiamo un clone con "Integer"
+            if use_integer:
+                # Re-definiamo un piccolo override
+                status, x_values, total_profit = solve_with_pulp_integer(campaigns, total_leads, corpo_percent)
+            else:
+                status, x_values, total_profit = solve_with_pulp(campaigns, total_leads, corpo_percent)
+
+            if status != "Optimal":
+                st.error(f"Soluzione non ottimale o infeasible. Stato: {status}")
                 return
 
-            corpo_alloc, laser_alloc, corpo_leads_used, laser_leads_used = best_solution
-
-            # Creiamo una tabella da mostrare
+            # x_values ha i lead assegnati a ciascuna campagna
             results = []
-            # corpo_alloc e laser_alloc contengono tuple: (camp_name, leads, cost, rev, profit)
-            all_alloc = corpo_alloc + laser_alloc
-            for (name, leads, cost_t, rev_t, prof_t) in all_alloc:
+            cost_total_sum = 0.0
+            revenue_total_sum = 0.0
+            profit_total_sum = 0.0
+
+            for i, camp in enumerate(campaigns):
+                leads_float = x_values[i] or 0.0
+                # Se stai usando cat="Continuous", potresti avere decimali; se cat="Integer", avrai interi
+                leads = int(round(leads_float))  # puoi anche lasciare float se preferisci
+
+                cost_t = camp["cost"] * leads
+                revenue_t = camp["revenue"] * leads
+                margin_t = camp["net_profit"] * leads
+
+                cost_total_sum += cost_t
+                revenue_total_sum += revenue_t
+                profit_total_sum += margin_t
+
                 results.append({
-                    "Campagna": name,
-                    "Leads": int(round(leads)),
+                    "Campagna": camp["name"],
+                    "Categoria": camp["category"],
+                    "Leads": leads,
                     "Costo Tot": int(round(cost_t)),
-                    "Ricavo Tot": int(round(rev_t)),
-                    "Margine": int(round(prof_t))
+                    "Ricavo Tot": int(round(revenue_t)),
+                    "Margine": int(round(margin_t)),
                 })
-            
+
+            # Mostriamo la tabella
             st.write("**Assegnazione Campagne**")
             st.table(results)
 
-            tot_cost = sum(r["Costo Tot"] for r in results)
-            tot_revenue = sum(r["Ricavo Tot"] for r in results)
-            tot_profit = sum(r["Margine"] for r in results)
-
             st.write("**Riepilogo**")
             st.write(f"Totale lead: {int(total_leads)}")
+            # Calcoliamo quanti lead corpo sono stati assegnati
+            corpo_leads_used = sum(
+                r["Leads"] for r in results if r["Categoria"] == "corpo"
+            )
             st.write(f"Lead 'corpo': {corpo_leads_used} (≥ {int(round(corpo_percent*100))}% del totale)")
-            st.write(f"Lead 'laser': {laser_leads_used}")
-            st.write(f"Costo totale: {tot_cost}")
-            st.write(f"Ricavo totale: {tot_revenue}")
-            st.write(f"Profitto totale: {tot_profit}")
-        else:
-            st.info("Imposta i parametri e poi clicca su 'Esegui Ottimizzazione'.")
+            st.write(f"Lead 'laser': {int(total_leads - corpo_leads_used)}")
 
+            st.write(f"Costo totale: {int(round(cost_total_sum))}")
+            st.write(f"Ricavo totale: {int(round(revenue_total_sum))}")
+            st.write(f"Profitto totale: {int(round(profit_total_sum))}")
+        else:
+            st.info("Imposta i parametri e clicca su 'Esegui Ottimizzazione'.")
     else:
         st.info("Carica un CSV valido oppure inserisci le campagne manualmente.")
+
+
+def solve_with_pulp_integer(campaigns, total_leads, corpo_percent):
+    """
+    Variante per vincolare x_i a valori interi (Mixed Integer Programming).
+    Quasi identica a solve_with_pulp ma con cat='Integer'.
+    """
+    from collections import defaultdict
+
+    prob = pu.LpProblem("MarketingCampaignOptimizationInteger", pu.LpMaximize)
+    n = len(campaigns)
+
+    # Variabili x_i (intere)
+    x = [pu.LpVariable(f"x_{i}", lowBound=0, cat="Integer") for i in range(n)]
+
+    # Funzione obiettivo
+    profit_expr = []
+    for i, camp in enumerate(campaigns):
+        profit_expr.append(camp["net_profit"] * x[i])
+    prob += pu.lpSum(profit_expr), "Total_Profit"
+
+    # Vincoli
+    prob += pu.lpSum(x) == total_leads, "Totale_lead"
+
+    corpo_indices = [i for i, camp in enumerate(campaigns) if camp["category"] == "corpo"]
+    if corpo_indices:
+        prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
+
+    cat_dict = defaultdict(list)
+    for i, camp in enumerate(campaigns):
+        cat_dict[camp["category"]].append(i)
+
+    for category, indices in cat_dict.items():
+        if len(indices) > 1:
+            min_i = min(indices, key=lambda idx: campaigns[idx]["net_profit"])
+            sum_in_cat = pu.lpSum([x[idx] for idx in indices])
+            prob += x[min_i] >= 0.2 * sum_in_cat, f"MinProfit_20pct_{category}"
+
+    prob.solve(pu.PULP_CBC_CMD(msg=0))
+    status = pu.LpStatus[prob.status]
+
+    if status == "Optimal":
+        x_values = [pu.value(var) for var in x]
+        total_profit = pu.value(prob.objective)
+        return status, x_values, total_profit
+    else:
+        return status, None, None
+
 
 if __name__ == "__main__":
     main()
