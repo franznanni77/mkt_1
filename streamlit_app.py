@@ -1,8 +1,7 @@
-
-
 import streamlit as st
 import pandas as pd
 import math
+import NumPy
 ##import scikit-learn as scikit
 
 
@@ -84,7 +83,7 @@ def compute_best_distribution(campaigns, total_leads, corpo_percent):
     return best_solution, best_profit
 
 def main():
-    st.title("Ottimizzatore di Campagne (Senza Solver)")
+    st.title("Ottimizzatore di Campagne ")
     st.write("""
     Questa applicazione dimostra una strategia di ottimizzazione 'fatta in casa':
     - Suddivide i lead tra 'corpo' e 'laser' in tutti i valori possibili compatibili con la percentuale minima di 'corpo'.
