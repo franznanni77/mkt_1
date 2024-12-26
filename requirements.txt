@@ -1,5 +1,6 @@
 streamlit
 pulp
 pandas
+reportlab
 #scikit-learn
 #pulp
