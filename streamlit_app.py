@@ -1,5 +1,5 @@
 import streamlit as st
-import pulp
+from pulp import *
 from collections import defaultdict
 
 def main():
