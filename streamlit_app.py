@@ -70,9 +70,9 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share):
         return status, None, None
 
 def main():
-    st.title("Ottimizzatore di Campagne (con Esportazione Excel/PDF)")
+    st.title("Ottimizzatore di Campagne")
     st.write("""
-    - I lead sono **interi** (cat="Integer").
+    - I lead sono **interi** .
     - Puoi impostare la percentuale minima 'corpo'.
     - Puoi impostare la percentuale minima di lead da assegnare alla campagna meno profittevole.
     - **Esportazione** risultati in Excel o PDF.
@@ -80,8 +80,11 @@ def main():
 
     st.subheader("1) Caricamento dei Dati")
 
-    mode = st.radio("Come vuoi inserire i dati delle campagne?", ["Carica CSV", "Inserimento manuale"])
-    campaigns = []
+    mode = st.radio(
+    "Come vuoi inserire i dati delle tue campagne? Carica un CSV come [questo file di esempio](https://drive.google.com/file/d/1vfp_gd6ivHsVpxffn_seAB11qCy9m0bP/view?usp=sharing)",
+    ["Carica CSV", "Inserimento manuale"]
+)
+campaigns = []
 
     if mode == "Carica CSV":
         uploaded_file = st.file_uploader("Seleziona il tuo CSV", type=["csv"])
