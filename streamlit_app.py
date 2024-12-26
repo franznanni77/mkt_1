@@ -69,19 +69,15 @@ def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share):
         return status, None, None
 
 def main():
-    st.title("Ottimizzatore di Campagne (Lead Interi) con PuLP")
+    st.title("Ottimizzatore di Campagne")
     st.write("""
-    Questa applicazione utilizza **PuLP** per risolvere un modello di 
-    Programmazione Lineare Mista (MIP) dove i lead assegnati a ciascuna campagna 
-    devono essere numeri interi (x_i >= 0, cat="Integer"). 
-    
-    **Vincoli**:
-    - Somma(x_i) = Totale lead da produrre.
-    - Almeno `corpo_percent * Totale lead` vanno a campagne 'corpo'.
-    - In ogni categoria con >=2 campagne, la campagna meno profittevole 
-      ottiene >= una certa percentuale (min_share) dei lead di quella categoria (scelta dall'utente).
-    
-    **Obiettivo**: massimizzare la somma dei margini (ricavo - costo).
+    Questa è un'applicazione che aiuta a distribuire i lead (potenziali clienti) tra diverse campagne pubblicitarie in modo ottimale. Vediamo in parole semplici cosa fa:
+
+Lo scopo è distribuire i lead tra le varie campagne pubblicitarie massimizzando il profitto (ricavo - costo)
+Ci sono alcuni vincoli da rispettare:
+- C'è un numero totale di lead da distribuire
+- Una certa percentuale dei lead deve andare alle campagne di tipo "corpo"
+- Per essere equi, quando ci sono 2 o più campagne della stessa categoria, anche quella meno redditizia deve ricevere una quota minima di lead
     """)
 
     st.subheader("1) Caricamento dei Dati")
