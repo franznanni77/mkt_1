@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 import math
-import scikit-learn as scikit
+##import scikit-learn as scikit
 
 
 def allocate_greedy(category_camps, leads_cat):
