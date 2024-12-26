@@ -4,113 +4,143 @@ import pulp as pu
 from collections import defaultdict
 import io
 
-# Per PDF
+# Per PDF (se poi volessi anche l'esportazione)
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 
-def solve_with_pulp_integer(campaigns, total_leads, corpo_percent, min_share, budget_max):
+def solve_mip(
+    campaigns, 
+    total_leads, 
+    corpo_percent, 
+    min_share, 
+    budget_max
+):
     """
-    Risolve il problema con PuLP, forzando x_i (lead per campagna i) a essere interi.
-    
-    Parametri:
-    - campaigns: lista di dict {name, category, cost, revenue, net_profit}
-    - total_leads: numero totale di lead da generare (int)
-    - corpo_percent: percentuale minima di lead 'corpo' (0..1)
-    - min_share: percentuale minima per OGNI campagna in una categoria (0..1)
-    - budget_max: budget massimo disponibile (>= 0)
-
-    Variabili: x_i >= 0, cat="Integer"
-
-    Vincoli:
+    Risolve il problema con PuLP, cat='Integer', 
+    con i vincoli:
       1) somma(x_i) = total_leads
       2) somma(x_i in 'corpo') >= corpo_percent * total_leads
-      3) Per ogni categoria, OGNI campagna j ha x_j >= min_share * (somma x in cat).
+      3) per ogni categoria, x_j >= min_share * somma(x in cat)
       4) somma(cost_i * x_i) <= budget_max
-
-    Obiettivo: max sum(net_profit_i * x_i)
     """
-
-    prob = pu.LpProblem("MarketingCampaignOptimizationInteger", pu.LpMaximize)
+    prob = pu.LpProblem("MktCampaignOptimization", pu.LpMaximize)
     n = len(campaigns)
 
-    # 1) Variabili di decisione (x_i, intere)
+    # Variabili x_i >= 0, Intere
     x = [pu.LpVariable(f"x_{i}", lowBound=0, cat="Integer") for i in range(n)]
 
-    # 2) Funzione obiettivo (profitto totale)
+    # Funzione Obiettivo: max sum( net_profit_i * x_i )
     profit_expr = []
     for i, camp in enumerate(campaigns):
         profit_expr.append(camp["net_profit"] * x[i])
     prob += pu.lpSum(profit_expr), "Total_Profit"
 
-    # 3) Vincoli
-
-    # (a) Somma dei lead = total_leads
+    # Vincolo (1): Somma lead = total_leads
     prob += pu.lpSum(x) == total_leads, "Totale_lead"
 
-    # (b) Somma dei lead 'corpo' >= corpo_percent * total_leads
-    corpo_indices = [i for i, camp in enumerate(campaigns) if camp["category"] == "corpo"]
+    # Vincolo (2): Somma lead 'corpo' >= corpo_percent * total_leads
+    corpo_indices = [i for i, c in enumerate(campaigns) if c["category"] == "corpo"]
     if corpo_indices:
         prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
 
-    # (c) OGNI campagna in una categoria >= min_share di quella categoria
+    # Vincolo (3): Ogni campagna >= min_share * somma di quella categoria
     cat_dict = defaultdict(list)
     for i, camp in enumerate(campaigns):
         cat_dict[camp["category"]].append(i)
-
     for category, indices in cat_dict.items():
-        if len(indices) > 1:  # se c'è >= 2 campagne
-            sum_in_cat = pu.lpSum(x[j] for j in indices)
+        if len(indices) > 1:
+            sum_cat = pu.lpSum([x[j] for j in indices])
             for j in indices:
-                prob += x[j] >= min_share * sum_in_cat, f"MinShare_{category}_{j}"
+                prob += x[j] >= min_share * sum_cat, f"MinShare_{category}_{j}"
 
-    # (d) Vincolo di budget massimo
-    cost_expr = [camp["cost"] * x[i] for i in range(n)]
+    # Vincolo (4): somma(cost_i * x_i) <= budget_max
+    cost_expr = [c["cost"] * x[i] for i, c in enumerate(campaigns)]
     prob += pu.lpSum(cost_expr) <= budget_max, "BudgetMax"
 
-    # 4) Risoluzione (solver CBC, silenzioso)
+    # Risolve
     prob.solve(pu.PULP_CBC_CMD(msg=0))
     status = pu.LpStatus[prob.status]
-
     if status == "Optimal":
         x_values = [pu.value(var) for var in x]
-        total_profit = pu.value(prob.objective)
-        return status, x_values, total_profit
+        profit = pu.value(prob.objective)
+        return status, x_values, profit
     else:
         return status, None, None
 
+def compute_solution_df(campaigns, x_values):
+    """
+    Dato l'array x_values e la lista campaigns, 
+    crea un DataFrame con leads, costi, ricavi, margine e una riga TOTALE in fondo.
+    """
+    results = []
+    cost_sum = 0
+    revenue_sum = 0
+    profit_sum = 0
+    lead_sum = 0
+
+    for i, camp in enumerate(campaigns):
+        leads = int(round(x_values[i] or 0))
+        cost_t = camp["cost"] * leads
+        revenue_t = camp["revenue"] * leads
+        margin_t = camp["net_profit"] * leads
+
+        cost_sum += cost_t
+        revenue_sum += revenue_t
+        profit_sum += margin_t
+        lead_sum += leads
+
+        results.append({
+            "Campagna": camp["name"],
+            "Categoria": camp["category"],
+            "Leads": leads,
+            "Costo Tot": int(round(cost_t)),
+            "Ricavo Tot": int(round(revenue_t)),
+            "Margine": int(round(margin_t))
+        })
+
+    df = pd.DataFrame(results)
+    # Riga TOTALE
+    df.loc["TOTALE"] = [
+        "",  # Campagna
+        "",  # Categoria
+        lead_sum,
+        int(round(cost_sum)),
+        int(round(revenue_sum)),
+        int(round(profit_sum))
+    ]
+
+    return df, cost_sum, revenue_sum, profit_sum, lead_sum
+
 def main():
-    st.title("Ottimizzatore di Campagne: min_share su OGNI campagna + Budget Max")
+    st.title("Analisi di Scenario (Budget Limitato vs. Senza Vincolo)")
     st.write("""
-    - I lead sono **interi** (cat="Integer").
-    - Vincolo su 'corpo_percent'.
-    - Vincolo di 'budget massimo'.
-    - **Nuovo**: OGNI campagna in una categoria deve avere ALMENO `min_share` dei lead di quella categoria.
-    
-    **Attenzione**: se una categoria ha N campagne e min_share = s, devi assicurarti che N*s <= 1.
+    Questa app risolve due scenari:
+    1. Scenario A: con un certo `budget_max_A`.
+    2. Scenario B: con un budget molto alto (praticamente illimitato).
+
+    Poi confronta i risultati, giustificando la spesa extra 
+    e mostrando l'effetto sul margine e sul numero di lead prodotti.
     """)
 
-    # Sezione caricamento dati
+    # Caricamento dati
     mode = st.radio(
-        "Come vuoi inserire i dati delle tue campagne? Carica un CSV come [questo file di esempio](https://drive.google.com/file/d/1vfp_gd6ivHsVpxffn_seAB11qCy9m0bP/view?usp=sharing)",
+        "Come vuoi inserire i dati? Carica un CSV come [questo file di esempio](https://drive.google.com/file/d/1vfp_gd6ivHsVpxffn_seAB11qCy9m0bP/view?usp=sharing)",
         ["Carica CSV", "Inserimento manuale"]
     )
     campaigns = []
-
     if mode == "Carica CSV":
         uploaded_file = st.file_uploader("Seleziona il tuo CSV", type=["csv"])
-        if uploaded_file is not None:
+        if uploaded_file:
             df = pd.read_csv(uploaded_file)
-            
-            st.write("**Anteprima del CSV caricato:**")
+            st.write("**Anteprima CSV:**")
             st.dataframe(df.head())
 
-            # Normalizziamo i nomi delle colonne
             df.columns = [c.lower().strip() for c in df.columns]
-            required_cols = ["nome campagna", "categoria campagna", "costo per lead", "ricavo per lead"]
-            if all(col in df.columns for col in required_cols):
+            required = ["nome campagna", "categoria campagna", "costo per lead", "ricavo per lead"]
+            if all(r in df.columns for r in required):
                 for _, row in df.iterrows():
-                    name = str(row["nome campagna"]).strip()
+                    name = row["nome campagna"]
                     category = str(row["categoria campagna"]).lower().strip()
                     cost = float(row["costo per lead"])
                     revenue = float(row["ricavo per lead"])
@@ -124,178 +154,112 @@ def main():
                         "net_profit": net_profit
                     })
             else:
-                st.error(f"Le colonne attese sono: {required_cols}. Controlla il tuo CSV.")
+                st.error(f"Mancano colonne: {required}. Controlla il CSV.")
     else:
-        n = st.number_input("Numero di campagne (2..10):", min_value=2, max_value=10, value=2, step=1)
+        n = st.number_input("Numero di campagne (2..10):", min_value=2, max_value=10, value=2)
         for i in range(n):
             st.markdown(f"**Campagna #{i+1}**")
             name = st.text_input(f"Nome campagna #{i+1}", key=f"name_{i}")
             category = st.selectbox(f"Categoria #{i+1}", ["laser", "corpo"], key=f"cat_{i}")
-            cost = st.number_input(f"Costo per lead #{i+1}", min_value=0.0, value=0.0, step=1.0, key=f"cost_{i}")
-            revenue = st.number_input(f"Ricavo per lead #{i+1}", min_value=0.0, value=0.0, step=1.0, key=f"rev_{i}")
-            
-            net_profit = revenue - cost
+            cost_ = st.number_input(f"Costo per lead #{i+1}", min_value=0.0, value=10.0, step=1.0, key=f"cost_{i}")
+            revenue_ = st.number_input(f"Ricavo per lead #{i+1}", min_value=0.0, value=30.0, step=1.0, key=f"rev_{i}")
+            net_profit = revenue_ - cost_
+
             campaigns.append({
                 "name": name if name else f"Camp_{i+1}",
                 "category": category,
-                "cost": cost,
-                "revenue": revenue,
+                "cost": cost_,
+                "revenue": revenue_,
                 "net_profit": net_profit
             })
 
     st.write("---")
+    if len(campaigns) == 0:
+        st.info("Carica il CSV o inserisci i dati manualmente.")
+        return
 
-    if campaigns:
-        st.subheader("2) Parametri Globali")
+    st.subheader("Parametri di Ottimizzazione")
+    total_leads = st.number_input("Totale dei lead da produrre (Scenario A e B):", min_value=1, value=10000, step=1)
+    corpo_percent = st.slider("Percentuale minima di lead 'corpo':", 0.0, 1.0, 0.33, 0.01)
+    min_share = st.slider("Percentuale minima su OGNI campagna nella stessa categoria:", 0.0, 1.0, 0.2, 0.01)
 
-        total_leads = st.number_input("Totale dei lead da produrre (intero):", min_value=1, value=10000, step=1)
-        corpo_percent = st.slider(
-            "Percentuale minima di lead 'corpo' (0% = 0.0, 100% = 1.0):", 
-            min_value=0.0, max_value=1.0, value=0.33, step=0.01
-        )
-        min_share = st.slider(
-            "Percentuale minima di lead per OGNI campagna (nella stessa categoria)",
-            min_value=0.0, max_value=1.0, value=0.2, step=0.01
-        )
-        budget_max = st.number_input(
-            "Budget massimo (EUR) che non vuoi superare:", 
-            min_value=0.0, 
-            value=50000.0, 
-            step=100.0
-        )
+    st.write("**Scenario A**: Budget limitato")
+    budget_max_A = st.number_input("Budget massimo per Scenario A:", min_value=0.0, value=50000.0, step=100.0)
 
-        if st.button("Esegui Ottimizzazione"):
-            status, x_values, total_profit = solve_with_pulp_integer(
-                campaigns,
-                int(total_leads),
-                corpo_percent,
-                min_share,
-                budget_max
-            )
+    # Scenario B: budget "infinito" (ad es. 1e9)
+    budget_max_B = 1e9
 
-            if status != "Optimal":
-                st.error(f"Soluzione non ottimale o infeasible. Stato solver: {status}")
-                return
+    if st.button("Esegui Analisi di Scenario"):
+        # 1) Risolvi Scenario A
+        statusA, xA, profitA = solve_mip(campaigns, total_leads, corpo_percent, min_share, budget_max_A)
+        if statusA != "Optimal":
+            st.error(f"Scenario A non ottimale o infeasible. Status: {statusA}")
+            return
+        dfA, costA, revenueA, marginA, leadsA = compute_solution_df(campaigns, xA)
 
-            # Prepara la tabella di output
-            results = []
-            cost_total_sum = 0
-            revenue_total_sum = 0
-            profit_total_sum = 0
+        # 2) Risolvi Scenario B
+        statusB, xB, profitB = solve_mip(campaigns, total_leads, corpo_percent, min_share, budget_max_B)
+        if statusB != "Optimal":
+            st.error(f"Scenario B non ottimale o infeasible. Status: {statusB}")
+            return
+        dfB, costB, revenueB, marginB, leadsB = compute_solution_df(campaigns, xB)
 
-            for i, camp in enumerate(campaigns):
-                leads_float = x_values[i] or 0.0
-                leads = int(round(leads_float))
+        # Mostra risultati SCENARIO A
+        st.write("## Risultati Scenario A (Budget limitato)")
+        st.table(dfA)
+        st.write(f"Costo totale: {int(round(costA))} (<= {int(round(budget_max_A))} €)")
+        st.write(f"Ricavo totale: {int(round(revenueA))}")
+        st.write(f"Profitto totale: {int(round(marginA))}")
+        st.write(f"Lead totali: {int(leadsA)}")
 
-                cost_t = camp["cost"] * leads
-                revenue_t = camp["revenue"] * leads
-                margin_t = camp["net_profit"] * leads
+        # Mostra risultati SCENARIO B
+        st.write("## Risultati Scenario B (Budget illimitato)")
+        st.table(dfB)
+        st.write(f"Costo totale: {int(round(costB))} (Budget altissimo, non vincolato)")
+        st.write(f"Ricavo totale: {int(round(revenueB))}")
+        st.write(f"Profitto totale: {int(round(marginB))}")
+        st.write(f"Lead totali: {int(leadsB)}")
 
-                cost_total_sum += cost_t
-                revenue_total_sum += revenue_t
-                profit_total_sum += margin_t
+        st.write("---")
+        st.subheader("Analisi di Scenario: Confronto A vs B")
 
-                results.append({
-                    "Campagna": camp["name"],
-                    "Categoria": camp["category"],
-                    "Leads": leads,
-                    "Costo Tot": int(round(cost_t)),
-                    "Ricavo Tot": int(round(revenue_t)),
-                    "Margine": int(round(margin_t))
-                })
-            
-            st.write("**Assegnazione Campagne**")
+        # Differenze
+        extra_cost = costB - costA
+        extra_margin = marginB - marginA
+        extra_leads = leadsB - leadsA
+        # margine ulteriore NETTO (extra_margin - extra_cost), se vuoi interpretarlo così
+        extra_net = extra_margin - extra_cost
 
-            # Convert 'results' in a DataFrame
-            df_result = pd.DataFrame(results)
+        st.write(f"**Spesa Scenario A**: {int(round(costA))} €, "
+                 f"Scenario B: {int(round(costB))} €  "
+                 f"(Differenza = {int(round(extra_cost))} €).")
 
-            # Calcoliamo i totali e aggiungiamo come ultima riga
-            sum_leads = df_result["Leads"].sum()
-            sum_cost = df_result["Costo Tot"].sum()
-            sum_revenue = df_result["Ricavo Tot"].sum()
-            sum_margin = df_result["Margine"].sum()
+        st.write(f"**Margine Scenario A**: {int(round(marginA))} €, "
+                 f"Scenario B: {int(round(marginB))} €  "
+                 f"(Differenza = {int(round(extra_margin))} €).")
 
-            # Aggiungiamo una riga "TOTALE" in fondo
-            df_result.loc["TOTALE"] = [
-                "",  # Campagna
-                "",  # Categoria
-                sum_leads,
-                sum_cost,
-                sum_revenue,
-                sum_margin
-            ]
+        st.write(f"**Lead Scenario A**: {int(leadsA)}  "
+                 f"Scenario B: {int(leadsB)}  "
+                 f"(Differenza = {int(extra_leads)}).")
 
-            st.table(df_result)
+        st.write("___")
 
-            # Riepilogo generale
-            corpo_leads_used = sum(r["Leads"] for r in results if r["Categoria"] == "corpo")
-
-            st.write("**Riepilogo**")
-            st.write(f"Totale lead: {int(total_leads)}")
-            st.write(f"Lead 'corpo': {corpo_leads_used} (≥ {int(round(corpo_percent*100))}% del totale)")
-            st.write(f"Lead 'laser': {int(total_leads - corpo_leads_used)}")
-
-            st.write(f"Costo totale: {int(round(cost_total_sum))} (non supera {int(budget_max)}€)")
-            st.write(f"Ricavo totale: {int(round(revenue_total_sum))}")
-            st.write(f"Profitto totale: {int(round(profit_total_sum))}")
-
-            st.write("---")
-            st.subheader("Esporta i risultati")
-
-            # ---- Esportazione Excel ----
-            import xlsxwriter
-
-            xlsx_buffer = io.BytesIO()
-            with pd.ExcelWriter(xlsx_buffer, engine="xlsxwriter") as writer:
-                df_result.to_excel(writer, index=True, sheet_name="Risultati")
-
-            st.download_button(
-                label="Esporta in Excel (XLSX)",
-                data=xlsx_buffer.getvalue(),
-                file_name="risultati.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-            # ---- Esportazione PDF ----
-            pdf_buffer = io.BytesIO()
-            doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
-
-            table_data = [list(df_result.columns)]  # header
-            # Aggiungiamo le righe
-            for idx, row in df_result.iterrows():
-                table_data.append([
-                    str(row["Campagna"]),
-                    str(row["Categoria"]),
-                    str(row["Leads"]),
-                    str(row["Costo Tot"]),
-                    str(row["Ricavo Tot"]),
-                    str(row["Margine"]),
-                ])
-
-            table = Table(table_data)
-            style = TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.gray),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ])
-            table.setStyle(style)
-
-            elements = [table]
-            doc.build(elements)
-            pdf_buffer.seek(0)
-
-            st.download_button(
-                label="Esporta in PDF",
-                data=pdf_buffer,
-                file_name="risultati.pdf",
-                mime="application/pdf"
-            )
-
+        if extra_cost > 0:
+            st.markdown(f"""
+            - Spendendo **{int(round(extra_cost))} €** in più, 
+            - Ottenete **{int(round(extra_margin))} €** di margine aggiuntivo 
+              (rispetto a Scenario A).
+            - Se consideriamo il **guadagno netto** = differenza margine - differenza costi,
+              otteniamo **{int(round(extra_net))} €** di profitto in più **al netto** 
+              della spesa extra.
+            - Avete prodotto **{int(extra_leads)}** lead in più.
+            """)
         else:
-            st.info("Imposta i parametri e clicca su 'Esegui Ottimizzazione'.")
-    else:
-        st.info("Carica un CSV valido o inserisci le campagne manualmente.")
+            st.markdown("""
+            In questo caso, lo scenario B non spende più di A 
+            (o addirittura spende uguale/meno), 
+            per cui non c’è un vero “sforamento” di budget.
+            """)
 
 if __name__ == "__main__":
     main()
