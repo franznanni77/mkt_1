@@ -295,32 +295,8 @@ def main():
         with st.spinner("Analisi AI in corso..."):
             analysis = analyzer.analyze_campaigns(dfA, dfB)
             if analysis:
-                # Crea tabs per organizzare l'analisi
-                tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                    "Performance Scenari", 
-                    "Campagne Efficienti",
-                    "ROI Incrementale",
-                    "Strategie Budget",
-                    "Raccomandazioni"
-                ])
-                
-                # Dividi l'analisi in sezioni
-                sections = analysis.split("\n\n")
-                
-                with tab1:
-                    st.markdown(sections[1])  # Performance comparison
-                
-                with tab2:
-                    st.markdown(sections[2])  # Efficient campaigns
-                
-                with tab3:
-                    st.markdown(sections[3])  # ROI analysis
-                
-                with tab4:
-                    st.markdown(sections[4])  # Budget strategies
-                
-                with tab5:
-                    st.markdown(sections[5])  # Recommendations
+                st.markdown("### 🔄 Confronto Performance")
+                st.markdown(analysis)
         
 
 if __name__ == "__main__":
