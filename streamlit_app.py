@@ -3,6 +3,9 @@ import pandas as pd
 import pulp as pu
 from collections import defaultdict
 import io
+from campaign_analyzer import display_analysis_section
+
+
 
 # Per PDF
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
@@ -285,6 +288,8 @@ def main():
         - Margine pesato extra: {int(extra_margin_w):,} €
         - Lead extra: {int(extra_leads):,}
         """)
+        # Dopo aver mostrato i risultati degli scenari
+        display_analysis_section(dfA, dfB)
 
 if __name__ == "__main__":
     main()

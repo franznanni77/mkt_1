@@ -5,3 +5,4 @@ reportlab
 xlsxwriter
 #scikit-learn
 #pulp
+anthropic
