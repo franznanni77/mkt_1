@@ -38,6 +38,7 @@ Per favore:
 4. Fornisci 3 raccomandazioni concrete per ottimizzare il budget
 
 Concludi con un riassunto strategico di 3-4 paragrafi dal punto di vista di un Direttore Digital Marketing con 20 anni di esperienza, evidenziando:
+- Non citare mai il tuo ruolo
 - L'impatto delle performance sulla strategia complessiva dell'azienda
 - Le opportunità di crescita identificate
 - I rischi e le sfide da gestire
