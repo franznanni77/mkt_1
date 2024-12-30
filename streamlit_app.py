@@ -254,10 +254,9 @@ def main():
         st.write("## Risultati Scenario B (Budget illimitato)")
         st.table(dfB)
 
-        st.write("---")
+        # ANALISI CONFRONTO
         st.subheader("Analisi di Scenario: Confronto A vs B")
         
-        # Calcoliamo prima tutti i totali e le differenze per il confronto
         totA = dfA.loc["TOTALE"]
         totB = dfB.loc["TOTALE"]
 
@@ -267,7 +266,6 @@ def main():
         extra_margin_w = totB["Margine Pesato"] - totA["Margine Pesato"]
         extra_leads = totB["Leads"] - totA["Leads"]
 
-        # Mostriamo i risultati in un formato chiaro e strutturato
         st.markdown(f"""
         **Scenario A**:
         - Spesa: {int(totA["Costo Tot"]):,} €
@@ -283,7 +281,6 @@ def main():
         - Margine pesato: {int(totB["Margine Pesato"]):,} €
         - Lead: {int(totB["Leads"]):,}
 
-        st.markdown(f"""
         **Differenze (B - A)**:
         - Spesa extra: {int(extra_cost):,} €
         - Margine immediato extra: {int(extra_margin_imm):,} €
@@ -291,34 +288,16 @@ def main():
         - Margine pesato extra: {int(extra_margin_w):,} €
         - Lead extra: {int(extra_leads):,}
         """)
-
-        # Utilizziamo session_state per mantenere l'analisi AI tra i refresh
-        if 'analysis_requested' not in st.session_state:
-            st.session_state.analysis_requested = False
-
-        # Creiamo una colonna dedicata per il pulsante di analisi
-        col1, col2, col3 = st.columns([1,2,1])
-        with col2:
-            if st.button("🤖 Genera Analisi AI", use_container_width=True):
-                st.session_state.analysis_requested = True
-
-        # Se l'analisi è stata richiesta, la mostriamo in una nuova sezione
-        if st.session_state.analysis_requested:
-            st.write("---")
-            st.subheader("Analisi AI delle Campagne")
-            
-            try:
-                analyzer = CampaignAnalyzer()
-                with st.spinner("L'AI sta analizzando i dati delle campagne..."):
-                    analysis = analyzer.analyze_campaigns(dfA, dfB)
-                    if analysis:
-                        # Estraiamo e formatiamo il testo dell'analisi
-                        analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
-                        st.markdown(analysis_text)
-                    else:
-                        st.error("Non sono stati ottenuti risultati dall'analisi.")
-            except Exception as e:
-                st.error(f"Si è verificato un errore durante l'analisi: {str(e)}")
+        st.write("---")
+        st.subheader("Analisi AI delle Campagne")
+        
+        analyzer = CampaignAnalyzer()
+        with st.spinner("Analisi AI in corso..."):
+            analysis = analyzer.analyze_campaigns(dfA, dfB)
+            if analysis:
+                # Estrai il testo dal TextBlock
+                analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
+                st.markdown(analysis_text)
         
 
 if __name__ == "__main__":
