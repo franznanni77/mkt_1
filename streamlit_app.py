@@ -321,12 +321,11 @@ def main():
         pdfB, fnameB_pdf = export_to_pdf(dfB, "ScenarioB")
 
         st.download_button(
-            label="Esporta Scenario B in Excel",
-            data=excelB,
-            file_name,
-            file_name=fnameB_xlsx,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    "Esporta Scenario B in Excel",
+    excelB,
+    fnameB_xlsx,
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
         st.download_button(
             label="Esporta Scenario B in PDF",
             data=pdfB,
