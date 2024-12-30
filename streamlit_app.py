@@ -254,9 +254,10 @@ def main():
         st.write("## Risultati Scenario B (Budget illimitato)")
         st.table(dfB)
 
-        # ANALISI CONFRONTO
+        st.write("---")
         st.subheader("Analisi di Scenario: Confronto A vs B")
         
+        # Calcoliamo prima tutti i totali e le differenze per il confronto
         totA = dfA.loc["TOTALE"]
         totB = dfB.loc["TOTALE"]
 
@@ -266,6 +267,7 @@ def main():
         extra_margin_w = totB["Margine Pesato"] - totA["Margine Pesato"]
         extra_leads = totB["Leads"] - totA["Leads"]
 
+        # Mostriamo i risultati in un formato chiaro e strutturato
         st.markdown(f"""
         **Scenario A**:
         - Spesa: {int(totA["Costo Tot"]):,} €
@@ -288,16 +290,20 @@ def main():
         - Margine pesato extra: {int(extra_margin_w):,} €
         - Lead extra: {int(extra_leads):,}
         """)
-        st.write("---")
-        st.subheader("Analisi AI delle Campagne")
-        
-        analyzer = CampaignAnalyzer()
-        with st.spinner("Analisi AI in corso..."):
-            analysis = analyzer.analyze_campaigns(dfA, dfB)
-            if analysis:
-                # Estrai il testo dal TextBlock
-                analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
-                st.markdown(analysis_text)
+
+        # Aggiungiamo un pulsante per attivare l'analisi AI su richiesta
+        if st.button("🤖 Genera Analisi AI"):
+            st.write("---")
+            st.subheader("Analisi AI delle Campagne")
+            
+            # Inizializziamo l'analizzatore e processiamo i dati
+            analyzer = CampaignAnalyzer()
+            with st.spinner("L'AI sta analizzando i dati delle campagne..."):
+                analysis = analyzer.analyze_campaigns(dfA, dfB)
+                if analysis:
+                    # Estraiamo e formatiamo il testo dell'analisi
+                    analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
+                    st.markdown(analysis_text)
         
 
 if __name__ == "__main__":
