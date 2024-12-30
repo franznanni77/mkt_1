@@ -9,7 +9,8 @@ class CampaignAnalyzer:
                 raise ValueError("La chiave API Anthropic non è configurata nei secrets di Streamlit")
             
             self.client = Anthropic(api_key=st.secrets["anthropic_api_key"])
-            self.model = "claude-3-5-haiku-20241022"
+            #self.model = "claude-3-5-haiku-20241022"
+            self.model = "claude-3-5-sonnet-20241022"
             self.max_tokens = 1024
             self.temperature = 0.75
         except Exception as e:
@@ -36,7 +37,7 @@ Per favore:
    - Costo per lead
 4. Fornisci 3 raccomandazioni concrete per ottimizzare il budget
 
-Concludi con un riassunto strategico di 2-3 paragrafi dal punto di vista di un Direttore Digital Marketing con 20 anni di esperienza, evidenziando:
+Concludi con un riassunto strategico di 3-4 paragrafi dal punto di vista di un Direttore Digital Marketing con 20 anni di esperienza, evidenziando:
 - L'impatto delle performance sulla strategia complessiva dell'azienda
 - Le opportunità di crescita identificate
 - I rischi e le sfide da gestire
