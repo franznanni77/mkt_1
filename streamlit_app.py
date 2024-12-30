@@ -3,6 +3,8 @@ import pandas as pd
 import pulp as pu
 from collections import defaultdict
 import io
+
+# Per PDF
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
@@ -13,7 +15,7 @@ def solve_mip(
     corpo_percent, 
     min_share, 
     budget_max,
-    weight_immediate,
+    weight_immediate,  # peso per profittabilità immediata (0-1)
 ):
     """
     Risolve il problema con PuLP, cat='Integer', 
@@ -26,26 +28,34 @@ def solve_mip(
     La profittabilità è calcolata come media pesata tra:
     - profitto immediato: (revenue - cost) * weight_immediate
     - profitto a 60gg: (revenue_60d - cost) * (1 - weight_immediate)
+
+    Ritorna: (status, x_values, profit)
     """
     prob = pu.LpProblem("MktCampaignOptimization", pu.LpMaximize)
     n = len(campaigns)
 
+    # Variabili x_i >= 0, Intere
     x = [pu.LpVariable(f"x_{i}", lowBound=0, cat="Integer") for i in range(n)]
 
+    # Funzione Obiettivo: max sum( weighted_profit_i * x_i )
     profit_expr = []
     for i, camp in enumerate(campaigns):
+        # Calcola profitto pesato
         immediate_profit = (camp["revenue"] - camp["cost"]) * weight_immediate
         profit_60d = (camp["revenue_60d"] - camp["cost"]) * (1 - weight_immediate)
         weighted_profit = immediate_profit + profit_60d
         profit_expr.append(weighted_profit * x[i])
     prob += pu.lpSum(profit_expr), "Total_Weighted_Profit"
 
+    # Vincolo (1): Somma lead = total_leads
     prob += pu.lpSum(x) == total_leads, "Totale_lead"
 
+    # Vincolo (2): Somma lead 'corpo' >= corpo_percent * total_leads
     corpo_indices = [i for i, c in enumerate(campaigns) if c["category"] == "corpo"]
     if corpo_indices:
         prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
 
+    # Vincolo (3): Ogni campagna >= min_share * (somma x in cat)
     cat_dict = defaultdict(list)
     for i, camp in enumerate(campaigns):
         cat_dict[camp["category"]].append(i)
@@ -55,9 +65,11 @@ def solve_mip(
             for j in indices:
                 prob += x[j] >= min_share * sum_cat, f"MinShare_{category}_{j}"
 
+    # Vincolo (4): somma(cost_i * x_i) <= budget_max
     cost_expr = [c["cost"] * x[i] for i, c in enumerate(campaigns)]
     prob += pu.lpSum(cost_expr) <= budget_max, "BudgetMax"
 
+    # Risolvi
     prob.solve(pu.PULP_CBC_CMD(msg=0))
     status = pu.LpStatus[prob.status]
     if status == "Optimal":
@@ -69,7 +81,10 @@ def solve_mip(
 
 def compute_solution_df(campaigns, x_values, weight_immediate):
     """
-    Crea DataFrame con risultati e calcola totali
+    Dato x_values e campaigns, crea un DataFrame con:
+      Campagna, Categoria, Leads, Costo Tot, Ricavo Tot, Ricavo 60gg Tot, 
+      Margine Immediato, Margine 60gg, Margine Pesato
+    e aggiunge in fondo una riga TOTALE.
     """
     results = []
     cost_sum = 0
@@ -111,9 +126,10 @@ def compute_solution_df(campaigns, x_values, weight_immediate):
         })
 
     df = pd.DataFrame(results)
+    # Aggiungiamo la riga TOTALE
     df.loc["TOTALE"] = [
-        "",
-        "",
+        "",  # Campagna
+        "",  # Categoria
         lead_sum,
         int(round(cost_sum)),
         int(round(revenue_sum)),
@@ -123,45 +139,6 @@ def compute_solution_df(campaigns, x_values, weight_immediate):
         int(round(weighted_margin_sum))
     ]
     return df
-
-def export_to_excel(df, scenario_name="Scenario"):
-    xlsx_buffer = io.BytesIO()
-    with pd.ExcelWriter(xlsx_buffer, engine="xlsxwriter") as writer:
-        df.to_excel(writer, index=True, sheet_name="Risultati")
-    file_name = f"risultati_{scenario_name}.xlsx"
-    return xlsx_buffer.getvalue(), file_name
-
-def export_to_pdf(df, scenario_name="Scenario"):
-    pdf_buffer = io.BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
-
-    table_data = [list(df.columns)]
-    for idx, row in df.iterrows():
-        table_data.append([
-            str(row["Campagna"]),
-            str(row["Categoria"]),
-            str(row["Leads"]),
-            str(row["Costo Tot"]),
-            str(row["Ricavo Tot"]),
-            str(row["Ricavo 60gg Tot"]),
-            str(row["Margine Immediato"]),
-            str(row["Margine 60gg"]),
-            str(row["Margine Pesato"]),
-        ])
-
-    table = Table(table_data)
-    style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.gray),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-    ])
-    table.setStyle(style)
-
-    doc.build([table])
-    pdf_buffer.seek(0)
-    file_name = f"risultati_{scenario_name}.pdf"
-    return pdf_buffer.getvalue(), file_name
 
 def main():
     st.title("Analisi di Scenario (Budget Limitato vs. Senza Vincolo)")
@@ -173,6 +150,7 @@ def main():
     La profittabilità è calcolata come media pesata tra margine immediato e margine a 60 giorni.
     """)
 
+    # Caricamento dati
     mode = st.radio(
         "Come vuoi inserire i dati?",
         ["Carica CSV", "Inserimento manuale"]
@@ -242,11 +220,11 @@ def main():
 
     st.write("**Scenario B**: Budget illimitato (non modificabile)", 1e9)
 
-    if st.button("Esegui Analisi di Scenario"):
+        if st.button("Esegui Analisi di Scenario"):
         # Calcola budget minimo necessario
         min_budget_needed = 0
         for camp in campaigns:
-            min_budget_needed += camp["cost"] * (min_share * total_leads)
+            min_budget_needed += camp["cost"] * (min_share * total_leads)  # Budget minimo per rispettare min_share
         
         if budget_max_A < min_budget_needed:
             st.error(f"""
@@ -264,6 +242,7 @@ def main():
             """)
             return
 
+        # Risolvi Scenario A (budget limitato)
         statusA, xA, profitA = solve_mip(
             campaigns, total_leads, corpo_percent, 
             min_share, budget_max_A, weight_immediate
@@ -282,9 +261,9 @@ def main():
             - Abbassare le percentuali minime
             """)
             return
-
         dfA = compute_solution_df(campaigns, xA, weight_immediate)
 
+        # Risolvi Scenario B (budget = 1e9)
         statusB, xB, profitB = solve_mip(
             campaigns, total_leads, corpo_percent, 
             min_share, 1e9, weight_immediate
@@ -295,44 +274,15 @@ def main():
 
         dfB = compute_solution_df(campaigns, xB, weight_immediate)
 
+        # SCENARIO A - RISULTATI
         st.write("## Risultati Scenario A (Budget limitato)")
         st.table(dfA)
 
-        excelA, fnameA_xlsx = export_to_excel(dfA, "ScenarioA")
-        pdfA, fnameA_pdf = export_to_pdf(dfA, "ScenarioA")
-
-        st.download_button(
-            label="Esporta Scenario A in Excel",
-            data=excelA,
-            file_name=fnameA_xlsx,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        st.download_button(
-            label="Esporta Scenario A in PDF",
-            data=pdfA,
-            file_name=fnameA_pdf,
-            mime="application/pdf"
-        )
-
+        # SCENARIO B - RISULTATI
         st.write("## Risultati Scenario B (Budget illimitato)")
         st.table(dfB)
 
-        excelB, fnameB_xlsx = export_to_excel(dfB, "ScenarioB")
-        pdfB, fnameB_pdf = export_to_pdf(dfB, "ScenarioB")
-
-        st.download_button(
-    "Esporta Scenario B in Excel",
-    excelB,
-    fnameB_xlsx,
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-        st.download_button(
-            label="Esporta Scenario B in PDF",
-            data=pdfB,
-            file_name=fnameB_pdf,
-            mime="application/pdf"
-        )
-
+        # ANALISI CONFRONTO
         st.subheader("Analisi di Scenario: Confronto A vs B")
         
         totA = dfA.loc["TOTALE"]
