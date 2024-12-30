@@ -283,6 +283,7 @@ def main():
         - Margine pesato: {int(totB["Margine Pesato"]):,} €
         - Lead: {int(totB["Leads"]):,}
 
+        st.markdown(f"""
         **Differenze (B - A)**:
         - Spesa extra: {int(extra_cost):,} €
         - Margine immediato extra: {int(extra_margin_imm):,} €
@@ -291,26 +292,33 @@ def main():
         - Lead extra: {int(extra_leads):,}
         """)
 
-           # Creiamo una colonna dedicata per il pulsante di analisi
+        # Utilizziamo session_state per mantenere l'analisi AI tra i refresh
+        if 'analysis_requested' not in st.session_state:
+            st.session_state.analysis_requested = False
+
+        # Creiamo una colonna dedicata per il pulsante di analisi
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
             if st.button("🤖 Genera Analisi AI", use_container_width=True):
-                st.write("---")
-                st.subheader("Analisi AI delle Campagne")
-                
-                try:
-                    # Inizializziamo l'analizzatore e processiamo i dati
-                    analyzer = CampaignAnalyzer()
-                    with st.spinner("L'AI sta analizzando i dati delle campagne..."):
-                        analysis = analyzer.analyze_campaigns(dfA, dfB)
-                        if analysis:
-                            # Estraiamo e formatiamo il testo dell'analisi
-                            analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
-                            st.markdown(analysis_text)
-                        else:
-                            st.error("Non sono stati ottenuti risultati dall'analisi.")
-                except Exception as e:
-                    st.error(f"Si è verificato un errore durante l'analisi: {str(e)}")
+                st.session_state.analysis_requested = True
+
+        # Se l'analisi è stata richiesta, la mostriamo in una nuova sezione
+        if st.session_state.analysis_requested:
+            st.write("---")
+            st.subheader("Analisi AI delle Campagne")
+            
+            try:
+                analyzer = CampaignAnalyzer()
+                with st.spinner("L'AI sta analizzando i dati delle campagne..."):
+                    analysis = analyzer.analyze_campaigns(dfA, dfB)
+                    if analysis:
+                        # Estraiamo e formatiamo il testo dell'analisi
+                        analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
+                        st.markdown(analysis_text)
+                    else:
+                        st.error("Non sono stati ottenuti risultati dall'analisi.")
+            except Exception as e:
+                st.error(f"Si è verificato un errore durante l'analisi: {str(e)}")
         
 
 if __name__ == "__main__":
