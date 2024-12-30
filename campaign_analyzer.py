@@ -26,15 +26,21 @@ Scenario A (Budget Limitato):
 Scenario B (Budget Illimitato):
 {dfB.to_string()}
 
+Ricordati che stai lavorando come un direttore marketing con 20 anni di esperienza e stiamo analizzando campagne di digital marketing per la più grande catena di centri estetici italiani BIOLASER
 Per favore:
-1. Confronta le performance dei due scenari
-2. Identifica le campagne più efficienti
-3. Analizza il ROI incrementale tra scenario A e B
-4. Suggerisci strategie di allocazione budget basate su:
+1. Identifica le campagne più efficienti
+2. Analizza il ROI incrementale tra scenario A e B
+3. Suggerisci strategie di allocazione budget basate su:
    - Marginalità immediata vs 60gg
    - Performance per categoria
    - Costo per lead
-5. Fornisci 3 raccomandazioni concrete per ottimizzare il budget
+4. Fornisci 3 raccomandazioni concrete per ottimizzare il budget
+
+Concludi con un riassunto strategico di 2-3 paragrafi dal punto di vista di un Direttore Digital Marketing con 20 anni di esperienza, evidenziando:
+- L'impatto delle performance sulla strategia complessiva dell'azienda
+- Le opportunità di crescita identificate
+- I rischi e le sfide da gestire
+
 
 Considera eventuali vincoli operativi o di mercato nelle tue raccomandazioni.
 Formatta la risposta in modo chiaro e strutturato."""
