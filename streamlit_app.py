@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import pulp as pu
 from collections import defaultdict
-from campaign_analyzer import display_analysis_section
+from campaign_analyzer import CampaignAnalyzer
+
 import io
 
 
