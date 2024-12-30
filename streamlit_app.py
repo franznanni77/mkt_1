@@ -147,8 +147,8 @@ def main():
     st.title("Analisi di Scenario (Budget Limitato vs. Senza Vincolo)")
     st.write("""
     Questa app risolve due scenari:
-    1. **Scenario A**: con un certo `budget_max_A`.
-    2. **Scenario B**: con un budget molto alto (di fatto illimitato).
+    1. **Scenario A**: con un budget Max impostato da utente.
+    2. **Scenario B**: con un budget illimitato.
 
     La profittabilità è calcolata come media pesata tra margine immediato e margine a 60 giorni.
     """)
