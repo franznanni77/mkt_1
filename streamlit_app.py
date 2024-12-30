@@ -295,8 +295,9 @@ def main():
         with st.spinner("Analisi AI in corso..."):
             analysis = analyzer.analyze_campaigns(dfA, dfB)
             if analysis:
-                st.markdown("### 🔄 Confronto Performance")
-                st.markdown(analysis)
+                # Estrai il testo dal TextBlock
+                analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
+                st.markdown(analysis_text)
         
 
 if __name__ == "__main__":
