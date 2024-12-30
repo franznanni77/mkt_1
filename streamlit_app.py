@@ -291,19 +291,26 @@ def main():
         - Lead extra: {int(extra_leads):,}
         """)
 
-        # Aggiungiamo un pulsante per attivare l'analisi AI su richiesta
-        if st.button("🤖 Genera Analisi AI"):
-            st.write("---")
-            st.subheader("Analisi AI delle Campagne")
-            
-            # Inizializziamo l'analizzatore e processiamo i dati
-            analyzer = CampaignAnalyzer()
-            with st.spinner("L'AI sta analizzando i dati delle campagne..."):
-                analysis = analyzer.analyze_campaigns(dfA, dfB)
-                if analysis:
-                    # Estraiamo e formatiamo il testo dell'analisi
-                    analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
-                    st.markdown(analysis_text)
+           # Creiamo una colonna dedicata per il pulsante di analisi
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            if st.button("🤖 Genera Analisi AI", use_container_width=True):
+                st.write("---")
+                st.subheader("Analisi AI delle Campagne")
+                
+                try:
+                    # Inizializziamo l'analizzatore e processiamo i dati
+                    analyzer = CampaignAnalyzer()
+                    with st.spinner("L'AI sta analizzando i dati delle campagne..."):
+                        analysis = analyzer.analyze_campaigns(dfA, dfB)
+                        if analysis:
+                            # Estraiamo e formatiamo il testo dell'analisi
+                            analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
+                            st.markdown(analysis_text)
+                        else:
+                            st.error("Non sono stati ottenuti risultati dall'analisi.")
+                except Exception as e:
+                    st.error(f"Si è verificato un errore durante l'analisi: {str(e)}")
         
 
 if __name__ == "__main__":
