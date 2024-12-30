@@ -323,7 +323,7 @@ def main():
         st.download_button(
             label="Esporta Scenario B in Excel",
             data=excelB,
-            file_name
+            file_name,
             file_name=fnameB_xlsx,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
