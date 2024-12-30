@@ -1,5 +1,5 @@
-nome campagna,categoria campagna,costo per lead,ricavo per lead
-LaserHigh,laser,11.12,40.11
-LaserLow,laser,9,35.23
-CorpoBasic,corpo,8,30
-CorpoPlus,corpo,9,32
+nome campagna,categoria campagna,costo per lead,ricavo per lead,ricavo per lead a 60 giorni
+LaserHigh,laser,11.12,40.11,200
+LaserLow,laser,9,35.23,180
+CorpoBasic,corpo,8,30,190
+CorpoPlus,corpo,9,32,340
