@@ -2,9 +2,8 @@ import streamlit as st
 import pandas as pd
 import pulp as pu
 from collections import defaultdict
-import io
 from campaign_analyzer import display_analysis_section
-
+import io
 
 
 # Per PDF
@@ -288,8 +287,15 @@ def main():
         - Margine pesato extra: {int(extra_margin_w):,} €
         - Lead extra: {int(extra_leads):,}
         """)
-        # Dopo aver mostrato i risultati degli scenari
-        display_analysis_section(dfA, dfB)
+        st.write("---")
+        st.subheader("Analisi AI delle Campagne")
+        
+        analyzer = CampaignAnalyzer()
+        with st.spinner("Analisi AI in corso..."):
+            analysis = analyzer.analyze_campaigns(dfA, dfB)
+            if analysis:
+                st.markdown(analysis)
+        
 
 if __name__ == "__main__":
     main()
