@@ -220,7 +220,7 @@ def main():
 
     st.write("**Scenario B**: Budget illimitato (non modificabile)", 1e9)
 
-    if st.button("Esegui Analisi di Scenario"):
+        if st.button("Esegui Analisi di Scenario"):
         # Calcola budget minimo necessario
         min_budget_needed = 0
         for camp in campaigns:
@@ -261,7 +261,6 @@ def main():
             - Abbassare le percentuali minime
             """)
             return
-
         dfA = compute_solution_df(campaigns, xA, weight_immediate)
 
         # Risolvi Scenario B (budget = 1e9)
