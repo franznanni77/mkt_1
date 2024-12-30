@@ -220,16 +220,47 @@ def main():
 
     st.write("**Scenario B**: Budget illimitato (non modificabile)", 1e9)
 
-    if st.button("Esegui Analisi di Scenario"):
+        if st.button("Esegui Analisi di Scenario"):
+        # Calcola budget minimo necessario
+        min_budget_needed = 0
+        for camp in campaigns:
+            min_budget_needed += camp["cost"] * (min_share * total_leads)  # Budget minimo per rispettare min_share
+        
+        if budget_max_A < min_budget_needed:
+            st.error(f"""
+            Scenario A non ottimale: il budget assegnato ({int(budget_max_A):,} €) non è sufficiente.
+            
+            Con i vincoli attuali:
+            - {total_leads:,} lead totali
+            - {min_share:.1%} share minima per campagna
+            - {corpo_percent:.1%} minimo lead corpo
+            
+            È necessario un budget di almeno {int(min_budget_needed):,} € oppure:
+            1. Riduci il numero totale di lead
+            2. Abbassa la percentuale minima per campagna
+            3. Abbassa la percentuale minima di lead corpo
+            """)
+            return
+
         # Risolvi Scenario A (budget limitato)
         statusA, xA, profitA = solve_mip(
             campaigns, total_leads, corpo_percent, 
             min_share, budget_max_A, weight_immediate
         )
         if statusA != "Optimal":
-            st.error(f"Scenario A non ottimale o infeasible. Status: {statusA}")
+            st.error(f"""
+            Scenario A non ottimale. Status: {statusA}
+            
+            Questo potrebbe dipendere da:
+            1. Budget insufficiente per i vincoli impostati
+            2. Combinazione di vincoli troppo restrittiva
+            
+            Prova a:
+            - Aumentare il budget
+            - Ridurre il numero di lead richiesti
+            - Abbassare le percentuali minime
+            """)
             return
-
         dfA = compute_solution_df(campaigns, xA, weight_immediate)
 
         # Risolvi Scenario B (budget = 1e9)
