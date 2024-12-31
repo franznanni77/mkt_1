@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import pulp as pu
 from collections import defaultdict
-from campaign_analyzer import CampaignAnalyzer
 
 import io
 
@@ -57,7 +56,7 @@ def solve_mip(
     if corpo_indices:
         prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
 
-     # Vincolo (3): Ogni campagna >= min_share * (somma x in cat)
+    # Vincolo (3): Ogni campagna >= min_share * (somma x in cat)
     cat_dict = defaultdict(list)
     for i, camp in enumerate(campaigns):
         cat_dict[camp["category"]].append(i)
@@ -66,7 +65,6 @@ def solve_mip(
             sum_cat = pu.lpSum([x[j] for j in indices])
             for j in indices:
                 prob += x[j] >= min_share * sum_cat, f"MinShare_{category}_{j}"
-
 
     # Vincolo (4): somma(cost_i * x_i) <= budget_max
     cost_expr = [c["cost"] * x[i] for i, c in enumerate(campaigns)]
@@ -219,9 +217,12 @@ def main():
     min_share = st.slider("Percentuale minima su OGNI campagna nella stessa categoria:", 0.0, 1.0, 0.2, 0.01)
 
     st.write("**Scenario A**: Budget limitato")
-    budget_max_A = st.number_input("Budget massimo per Scenario A:", min_value=0.0, value=90000.0, step=100.0)
+    budget_max_A = st.number_input("Budget massimo per Scenario A:", min_value=0.0, value=50000.0, step=100.0)
 
     st.write("**Scenario B**: Budget illimitato (non modificabile)", 1e9)
+
+    dfA = None
+    dfB = None
 
     if st.button("Esegui Analisi di Scenario"):
         # Risolvi Scenario A (budget limitato)
@@ -290,8 +291,12 @@ def main():
         """)
 
     if st.button("Richiedi Analisi AI"):
+        if dfA is None or dfB is None:
+            st.error("Devi eseguire prima l'analisi dello scenario.")
+            return
+
         st.subheader("Analisi AI delle Campagne")
-        
+        from campaign_analyzer import CampaignAnalyzer
         analyzer = CampaignAnalyzer()
         with st.spinner("Analisi AI in corso..."):
             analysis = analyzer.analyze_campaigns(dfA, dfB)
