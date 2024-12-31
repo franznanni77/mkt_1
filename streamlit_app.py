@@ -278,6 +278,23 @@ def main():
         - Margine pesato extra: {int(extra_margin_w):,} €
         - Lead extra: {int(extra_leads):,}
         """)
+     # VISUALIZZAZIONE GRAFICI
+        st.subheader("Grafici Comparativi")
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+
+        # Grafico 1: Costi
+        ax[0].bar(["Scenario A", "Scenario B"], [totA["Costo Tot"], totB["Costo Tot"]], color=['blue', 'green'])
+        ax[0].set_title("Confronto Costi")
+        ax[0].set_ylabel("Costo Totale (€)")
+
+        # Grafico 2: Margine Pesato
+        ax[1].bar(["Scenario A", "Scenario B"], [totA["Margine Pesato"], totB["Margine Pesato"]], color=['blue', 'green'])
+        ax[1].set_title("Confronto Margine Pesato")
+        ax[1].set_ylabel("Margine Pesato (€)")
+
+        st.pyplot(fig)    
 
     if st.button("Richiedi Analisi AI"):
         if st.session_state.dfA is None or st.session_state.dfB is None:

@@ -6,3 +6,5 @@ xlsxwriter
 #scikit-learn
 #pulp
 anthropic
+matplotlib
+
