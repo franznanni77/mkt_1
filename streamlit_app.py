@@ -309,7 +309,7 @@ def main():
         with st.spinner("Analisi AI in corso..."):
             analysis = analyzer.analyze_campaigns(st.session_state.dfA, st.session_state.dfB)
             if analysis:
-                # Estrai il testo dal TextBlock
+                # Estrai il testo dal Textblock
                 analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
                 st.markdown(analysis_text)
 
