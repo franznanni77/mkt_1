@@ -66,6 +66,7 @@ def solve_mip(
             for j in indices:
                 prob += x[j] >= min_share * sum_cat, f"MinShare_{category}_{j}"
 
+
     # Vincolo (4): somma(cost_i * x_i) <= budget_max
     cost_expr = [c["cost"] * x[i] for i, c in enumerate(campaigns)]
     prob += pu.lpSum(cost_expr) <= budget_max, "BudgetMax"
