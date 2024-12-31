@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import pulp as pu
 from collections import defaultdict
+from campaign_analyzer import CampaignAnalyzer
 
 import io
 
@@ -290,7 +291,7 @@ def main():
 
     if st.button("Richiedi Analisi AI"):
         st.subheader("Analisi AI delle Campagne")
-        from campaign_analyzer import CampaignAnalyzer
+        
         analyzer = CampaignAnalyzer()
         with st.spinner("Analisi AI in corso..."):
             analysis = analyzer.analyze_campaigns(dfA, dfB)
