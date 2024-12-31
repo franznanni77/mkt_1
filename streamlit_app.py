@@ -18,20 +18,7 @@ def solve_mip(
     budget_max,
     weight_immediate,  # peso per profittabilità immediata (0-1)
 ):
-    """
-    Risolve il problema con PuLP, cat='Integer', 
-    con i vincoli:
-      1) somma(x_i) = total_leads
-      2) somma(x_i in 'corpo') >= corpo_percent * total_leads
-      3) per ogni categoria, x_j >= min_share * somma(x in cat)
-      4) somma(cost_i * x_i) <= budget_max
-
-    La profittabilità è calcolata come media pesata tra:
-    - profitto immediato: (revenue - cost) * weight_immediate
-    - profitto a 60gg: (revenue_60d - cost) * (1 - weight_immediate)
-
-    Ritorna: (status, x_values, profit)
-    """
+   
     prob = pu.LpProblem("MktCampaignOptimization", pu.LpMaximize)
     n = len(campaigns)
 
