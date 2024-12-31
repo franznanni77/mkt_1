@@ -257,6 +257,41 @@ def main():
         st.write("## Risultati Scenario B (Budget illimitato)")
         st.table(st.session_state.dfB)
 
+    # ANALISI CONFRONTO
+        st.subheader("Analisi di Scenario: Confronto A vs B")
+        
+        totA = dfA.loc["TOTALE"]
+        totB = dfB.loc["TOTALE"]
+
+        extra_cost = totB["Costo Tot"] - totA["Costo Tot"]
+        extra_margin_imm = totB["Margine Immediato"] - totA["Margine Immediato"]
+        extra_margin_60d = totB["Margine 60gg"] - totA["Margine 60gg"]
+        extra_margin_w = totB["Margine Pesato"] - totA["Margine Pesato"]
+        extra_leads = totB["Leads"] - totA["Leads"]
+
+        st.markdown(f"""
+        **Scenario A**:
+        - Spesa: {int(totA["Costo Tot"]):,} €
+        - Margine immediato: {int(totA["Margine Immediato"]):,} €
+        - Margine 60gg: {int(totA["Margine 60gg"]):,} €
+        - Margine pesato: {int(totA["Margine Pesato"]):,} €
+        - Lead: {int(totA["Leads"]):,}
+
+        **Scenario B**:
+        - Spesa: {int(totB["Costo Tot"]):,} €
+        - Margine immediato: {int(totB["Margine Immediato"]):,} €
+        - Margine 60gg: {int(totB["Margine 60gg"]):,} €
+        - Margine pesato: {int(totB["Margine Pesato"]):,} €
+        - Lead: {int(totB["Leads"]):,}
+
+        **Differenze (B - A)**:
+        - Spesa extra: {int(extra_cost):,} €
+        - Margine immediato extra: {int(extra_margin_imm):,} €
+        - Margine 60gg extra: {int(extra_margin_60d):,} €
+        - Margine pesato extra: {int(extra_margin_w):,} €
+        - Lead extra: {int(extra_leads):,}
+        """)
+
     if st.button("Richiedi Analisi AI"):
         if st.session_state.dfA is None or st.session_state.dfB is None:
             st.error("Devi eseguire prima l'analisi dello scenario.")
