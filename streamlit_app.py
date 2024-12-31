@@ -217,7 +217,7 @@ def main():
     min_share = st.slider("Percentuale minima su OGNI campagna nella stessa categoria:", 0.0, 1.0, 0.2, 0.01)
 
     st.write("**Scenario A**: Budget limitato")
-    budget_max_A = st.number_input("Budget massimo per Scenario A:", min_value=0.0, value=50000.0, step=100.0)
+    budget_max_A = st.number_input("Budget massimo per Scenario A:", min_value=0.0, value=90000.0, step=100.0)
 
     st.write("**Scenario B**: Budget illimitato (non modificabile)", 1e9)
 
