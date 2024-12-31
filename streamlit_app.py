@@ -257,11 +257,11 @@ def main():
         st.write("## Risultati Scenario B (Budget illimitato)")
         st.table(st.session_state.dfB)
 
-    # ANALISI CONFRONTO
+        # ANALISI CONFRONTO
         st.subheader("Analisi di Scenario: Confronto A vs B")
         
-        totA = dfA.loc["TOTALE"]
-        totB = dfB.loc["TOTALE"]
+        totA = st.session_state.dfA.loc["TOTALE"]
+        totB = st.session_state.dfB.loc["TOTALE"]
 
         extra_cost = totB["Costo Tot"] - totA["Costo Tot"]
         extra_margin_imm = totB["Margine Immediato"] - totA["Margine Immediato"]
