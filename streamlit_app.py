@@ -221,8 +221,10 @@ def main():
 
     st.write("**Scenario B**: Budget illimitato (non modificabile)", 1e9)
 
-    dfA = None
-    dfB = None
+    if "dfA" not in st.session_state:
+        st.session_state.dfA = None
+    if "dfB" not in st.session_state:
+        st.session_state.dfB = None
 
     if st.button("Esegui Analisi di Scenario"):
         # Risolvi Scenario A (budget limitato)
@@ -234,7 +236,7 @@ def main():
             st.error(f"Scenario A non ottimale probabilmente il budget non è sufficiente. Status: {statusA}")
             return
 
-        dfA = compute_solution_df(campaigns, xA, weight_immediate)
+        st.session_state.dfA = compute_solution_df(campaigns, xA, weight_immediate)
 
         # Risolvi Scenario B (budget = 1e9)
         statusB, xB, profitB = solve_mip(
@@ -245,21 +247,21 @@ def main():
             st.error(f"Scenario B non ottimale o infeasible. Status: {statusB}")
             return
 
-        dfB = compute_solution_df(campaigns, xB, weight_immediate)
+        st.session_state.dfB = compute_solution_df(campaigns, xB, weight_immediate)
 
         # SCENARIO A - RISULTATI
         st.write("## Risultati Scenario A (Budget limitato)")
-        st.table(dfA)
+        st.table(st.session_state.dfA)
 
         # SCENARIO B - RISULTATI
         st.write("## Risultati Scenario B (Budget illimitato)")
-        st.table(dfB)
+        st.table(st.session_state.dfB)
 
         # ANALISI CONFRONTO
         st.subheader("Analisi di Scenario: Confronto A vs B")
         
-        totA = dfA.loc["TOTALE"]
-        totB = dfB.loc["TOTALE"]
+        totA = st.session_state.dfA.loc["TOTALE"]
+        totB = st.session_state.dfB.loc["TOTALE"]
 
         extra_cost = totB["Costo Tot"] - totA["Costo Tot"]
         extra_margin_imm = totB["Margine Immediato"] - totA["Margine Immediato"]
@@ -291,7 +293,7 @@ def main():
         """)
 
     if st.button("Richiedi Analisi AI"):
-        if dfA is None or dfB is None:
+        if st.session_state.dfA is None or st.session_state.dfB is None:
             st.error("Devi eseguire prima l'analisi dello scenario.")
             return
 
@@ -299,7 +301,7 @@ def main():
         from campaign_analyzer import CampaignAnalyzer
         analyzer = CampaignAnalyzer()
         with st.spinner("Analisi AI in corso..."):
-            analysis = analyzer.analyze_campaigns(dfA, dfB)
+            analysis = analyzer.analyze_campaigns(st.session_state.dfA, st.session_state.dfB)
             if analysis:
                 # Estrai il testo dal TextBlock
                 analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
