@@ -6,7 +6,6 @@ from campaign_analyzer import CampaignAnalyzer
 
 import io
 
-
 # Per PDF
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from reportlab.lib.pagesizes import letter
@@ -61,7 +60,7 @@ def solve_mip(
     # Vincolo (3): Ogni campagna >= min_share * (somma x in cat)
     cat_dict = defaultdict(list)
     for i, camp in enumerate(campaigns):
-        cat_dict[camp["category"]].append(i)
+        cat_dict[camp["category"].append(i)
     for category, indices in cat_dict.items():
         if len(indices) > 1:
             sum_cat = pu.lpSum([x[j] for j in indices])
@@ -288,9 +287,9 @@ def main():
         - Margine pesato extra: {int(extra_margin_w):,} €
         - Lead extra: {int(extra_leads):,}
         """)
-        st.write("---")
+
+    if st.button("Richiedi Analisi AI"):
         st.subheader("Analisi AI delle Campagne")
-        
         analyzer = CampaignAnalyzer()
         with st.spinner("Analisi AI in corso..."):
             analysis = analyzer.analyze_campaigns(dfA, dfB)
@@ -298,7 +297,6 @@ def main():
                 # Estrai il testo dal TextBlock
                 analysis_text = analysis[0].text if isinstance(analysis, list) else str(analysis)
                 st.markdown(analysis_text)
-        
 
 if __name__ == "__main__":
     main()
