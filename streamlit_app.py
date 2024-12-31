@@ -287,14 +287,16 @@ def main():
         # Grafico 1: Costi
         ax[0].bar(["Scenario A", "Scenario B"], [totA["Costo Tot"], totB["Costo Tot"]], color=['blue', 'green'])
         ax[0].set_title("Confronto Costi")
+        ax[0].set_ylim([budget_max_A - 5000, max(totA["Costo Tot"], totB["Costo Tot"]) + 1000])
         ax[0].set_ylabel("Costo Totale (€)")
 
         # Grafico 2: Margine Pesato
         ax[1].bar(["Scenario A", "Scenario B"], [totA["Margine Pesato"], totB["Margine Pesato"]], color=['blue', 'green'])
         ax[1].set_title("Confronto Margine Pesato")
+        ax[1].set_ylim([min(totA["Margine Pesato"], totB["Margine Pesato"]) - 5000, max(totA["Margine Pesato"], totB["Margine Pesato"]) + 1000])
         ax[1].set_ylabel("Margine Pesato (€)")
 
-        st.pyplot(fig)    
+        st.pyplot(fig) 
 
     if st.button("Richiedi Analisi AI"):
         if st.session_state.dfA is None or st.session_state.dfB is None:
