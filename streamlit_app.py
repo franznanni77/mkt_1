@@ -141,7 +141,7 @@ def main():
     # Caricamento dati
     mode = st.radio(
         "Come vuoi inserire i dati?",
-        ["Carica CSV", "Inserimento manuale" "Carica un CSV come [questo file di esempio](https://drive.google.com/file/d/1vfp_gd6ivHsVpxffn_seAB11qCy9m0bP/view?usp=sharing)"]
+        ["Carica CSV [questo file di esempio](https://drive.google.com/file/d/1vfp_gd6ivHsVpxffn_seAB11qCy9m0bP/view?usp=sharing)", "Inserimento manuale"]
     )
     campaigns = []
     if mode == "Carica CSV":
