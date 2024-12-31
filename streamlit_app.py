@@ -56,10 +56,10 @@ def solve_mip(
     if corpo_indices:
         prob += pu.lpSum([x[i] for i in corpo_indices]) >= corpo_percent * total_leads, "Minimo_corpo"
 
-    # Vincolo (3): Ogni campagna >= min_share * (somma x in cat)
+     # Vincolo (3): Ogni campagna >= min_share * (somma x in cat)
     cat_dict = defaultdict(list)
     for i, camp in enumerate(campaigns):
-        cat_dict[camp["category"].append(i)
+        cat_dict[camp["category"]].append(i)
     for category, indices in cat_dict.items():
         if len(indices) > 1:
             sum_cat = pu.lpSum([x[j] for j in indices])
